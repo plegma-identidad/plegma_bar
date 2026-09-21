@@ -24,7 +24,7 @@ export const TableModal: React.FC<TableModalProps> = ({ tableToEdit, sites, onCl
     label: `${s.name} (Orden ${s.order})`,
   }));
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!number.trim()) {
       setError('El número o identificador de mesa es obligatorio (R-M01).');
@@ -48,8 +48,8 @@ export const TableModal: React.FC<TableModalProps> = ({ tableToEdit, sites, onCl
       name: name.trim() || undefined,
     };
 
-    const res = onSave(payload);
-    if (!res.success) {
+    const res = await onSave(payload);
+    if (res && !res.success) {
       setError(res.message);
     }
   };

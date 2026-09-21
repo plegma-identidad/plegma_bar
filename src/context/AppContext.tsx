@@ -47,7 +47,19 @@ import {
   ConfigOption,
   CurrentAccountMovement,
   Receipt,
+  Client,
 } from '../types';
+import { configService } from '../services/configService';
+import { providersService } from '../services/providersService';
+import { itemsService } from '../services/itemsService';
+import { clientsService } from '../services/clientsService';
+import { posConfigService } from '../services/posConfigService';
+import { employeesService } from '../services/employeesService';
+import { usersService } from '../services/usersService';
+import { saleOrdersService } from '../services/saleOrdersService';
+import { cashService } from '../services/cashService';
+import { currentAccountService } from '../services/currentAccountService';
+import { auditLogsService } from '../services/auditLogsService';
 import {
   INITIAL_PROVIDERS,
   INITIAL_ITEMS,
@@ -145,6 +157,9 @@ interface AppContextType {
   addProvider: (provider: Provider) => void;
   updateProvider: (provider: Provider) => void;
   deleteProvider: (providerId: string) => void;
+  clients: Client[];
+  addOrUpdateClient: (client: Client) => Promise<void>;
+  deleteClient: (clientId: string) => Promise<void>;
   items: Item[];
   deleteItem: (itemId: string) => void;
   providerItems: ProviderItemRelation[];
@@ -187,15 +202,15 @@ interface AppContextType {
   cashLines: CashLine[];
   cashMovements: CashMovement[];
   masterCashBoxes: MasterCashBox[];
-  openCashShift: (shift: TurnoType, initialLines?: { boxType: string; initialAmount: number }[], notes?: string) => { success: boolean; message: string; shift?: CashShift };
-  addCashLine: (shiftId: string, boxType: string, initialAmount: number) => { success: boolean; message: string; line?: CashLine };
-  recordCashMovement: (movement: Omit<CashMovement, 'id' | 'dateTime' | 'userId' | 'userName'>) => void;
-  withdrawCashToMaster: (payload: CashWithdrawalPayload) => { success: boolean; message: string };
-  transferCashBetweenLines: (payload: { sourceLineId: string; targetLineId: string; amount: number; notes?: string }) => { success: boolean; message: string };
-  closeCashLine: (lineId: string, realAmount: number, differenceNotes?: string) => { success: boolean; message: string };
-  closeCashShift: (shiftId: string) => { success: boolean; message: string };
-  reconcileCashShift: (shiftId: string) => { success: boolean; message: string };
-  voidCashShift: (shiftId: string, reason: string) => { success: boolean; message: string };
+  openCashShift: (shift: TurnoType, initialLines?: { boxType: string; initialAmount: number }[], notes?: string) => Promise<{ success: boolean; message: string; shift?: CashShift }>;
+  addCashLine: (shiftId: string, boxType: string, initialAmount: number) => Promise<{ success: boolean; message: string; line?: CashLine }>;
+  recordCashMovement: (movement: Omit<CashMovement, 'id' | 'dateTime' | 'userId' | 'userName'>) => Promise<void>;
+  withdrawCashToMaster: (payload: CashWithdrawalPayload) => Promise<{ success: boolean; message: string }>;
+  transferCashBetweenLines: (payload: { sourceLineId: string; targetLineId: string; amount: number; notes?: string }) => Promise<{ success: boolean; message: string }>;
+  closeCashLine: (lineId: string, realAmount: number, differenceNotes?: string) => Promise<{ success: boolean; message: string }>;
+  closeCashShift: (shiftId: string) => Promise<{ success: boolean; message: string }>;
+  reconcileCashShift: (shiftId: string) => Promise<{ success: boolean; message: string }>;
+  voidCashShift: (shiftId: string, reason: string) => Promise<{ success: boolean; message: string }>;
 
   // Reservations Control
   restaurantTables: RestaurantTable[];
@@ -226,12 +241,12 @@ interface AppContextType {
 
   // Sale Orders (Pedidos y Ventas)
   saleOrders: SaleOrder[];
-  createSaleOrder: (data: Omit<SaleOrder, 'id' | 'orderNumber' | 'createdAt' | 'status' | 'createdByUserId' | 'createdByUserName' | 't1CreatedAt'>) => { success: boolean; message: string; order?: SaleOrder };
-  updateSaleOrder: (order: SaleOrder) => { success: boolean; message: string };
-  generateComandaPDF: (orderId: string) => { success: boolean; message: string; pdfUrl?: string };
-  updateSaleOrderStatus: (orderId: string, status: OrderStatus) => { success: boolean; message: string };
-  processOrderBilling: (orderId: string, billing: Omit<OrderBillingInfo, 'billedAt' | 'ticketNumber'>) => { success: boolean; message: string; ticketNumber?: string };
-  cancelSaleOrder: (orderId: string, reason?: string) => { success: boolean; message: string };
+  createSaleOrder: (data: Omit<SaleOrder, 'id' | 'orderNumber' | 'createdAt' | 'status' | 'createdByUserId' | 'createdByUserName' | 't1CreatedAt'>) => Promise<{ success: boolean; message: string; order?: SaleOrder }>;
+  updateSaleOrder: (order: SaleOrder) => Promise<{ success: boolean; message: string }>;
+  generateComandaPDF: (orderId: string) => Promise<{ success: boolean; message: string; pdfUrl?: string }>;
+  updateSaleOrderStatus: (orderId: string, status: OrderStatus) => Promise<{ success: boolean; message: string }>;
+  processOrderBilling: (orderId: string, billing: Omit<OrderBillingInfo, 'billedAt' | 'ticketNumber'>) => Promise<{ success: boolean; message: string; ticketNumber?: string }>;
+  cancelSaleOrder: (orderId: string, reason?: string) => Promise<{ success: boolean; message: string }>;
 
   // Grupos de Opciones y Modificadores (Comandas v2.0)
   productOptionGroups: ProductOptionGroup[];
@@ -326,153 +341,231 @@ const getLocalDateString = () => {
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [userRole, setUserRole] = useState<UserRole>('admin');
   const [activeUserId, setActiveUserId] = useState<string>('usr-1');
-  const [users, setUsers] = useState<AppUser[]>([
-    {
-      id: 'usr-1',
-      dni: '35.123.456',
-      name: 'Admin General',
-      email: 'admin@plegma.com',
-      phone: '+54 11 5555-1111',
-      address: 'Av. Santa Fe 1200, CABA',
-      profileId: 'p-1',
-      profileName: 'Administrador General',
-      assignedRoleIds: ['r-1'],
-      role: 'admin',
-      status: 'Activo',
-      lastAccess: 'Hoy 10:30 hs',
-      customPermissions: {
-        canInlineCreate: true,
-        canCreate: true,
-        canEdit: true,
-        canDelete: true,
-        canApprovePayment: true,
-        canManageUsers: true,
-      },
-    },
-    {
-      id: 'usr-2',
-      dni: '38.987.654',
-      name: 'Jefe de Compras',
-      email: 'compras@plegma.com',
-      phone: '+54 11 4444-2222',
-      address: 'Calle Corrientes 3400, CABA',
-      profileId: 'p-2',
-      profileName: 'Encargado de Compras',
-      assignedRoleIds: ['r-2', 'r-5'],
-      role: 'compras',
-      status: 'Activo',
-      lastAccess: 'Ayer 18:15 hs',
-    },
-    {
-      id: 'usr-3',
-      dni: '40.555.777',
-      name: 'Recepcionista Depósito',
-      email: 'recepcion@plegma.com',
-      phone: '+54 11 3333-8888',
-      address: 'Honduras 5100, CABA',
-      profileId: 'p-7',
-      profileName: 'Encargado de Depósito',
-      assignedRoleIds: ['r-3'],
-      role: 'recepcion',
-      status: 'Activo',
-      lastAccess: 'Hace 2 horas',
-    },
-  ]);
-
+  const [users, setUsers] = useState<AppUser[]>([]);
   const [rolePermissions, setRolePermissions] = useState<Record<UserRole, UserPermissions>>(DEFAULT_ROLE_PERMISSIONS);
-  const [providers, setProviders] = useState<Provider[]>(INITIAL_PROVIDERS);
-  const [items, setItems] = useState<Item[]>(INITIAL_ITEMS);
-  const [providerItems, setProviderItems] = useState<ProviderItemRelation[]>(INITIAL_PROVIDER_ITEMS);
+  const [providers, setProviders] = useState<Provider[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
+  const [providerItems, setProviderItems] = useState<ProviderItemRelation[]>([]);
   const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
   const [stockCounts, setStockCounts] = useState<StockCount[]>([]);
   const [receptionHours, setReceptionHours] = useState<ReceptionHoursConfig>(INITIAL_RECEPTION_HOURS);
   const [priceHistory, setPriceHistory] = useState<PriceHistoryEntry[]>(INITIAL_PRICE_HISTORY);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>(INITIAL_AUDIT_LOGS);
-  const [employees, setEmployees] = useState<Employee[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_employees');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_EMPLOYEES;
-  });
+  const [employees, setEmployees] = useState<Employee[]>([]);
 
-  const [itemCategories, setItemCategories] = useState<ConfigOption[]>(() => {
+  const [itemCategories, setItemCategories] = useState<ConfigOption[]>([]);
+  const [itemSubcategories, setItemSubcategories] = useState<ConfigOption[]>([]);
+  const [itemUnits, setItemUnits] = useState<ConfigOption[]>([]);
+
+  // Limpiar localStorage legado de opciones de configuración, proveedores, clientes, insumos, empleados, usuarios, comandas, caja, CC y consumos
+  useEffect(() => {
     try {
-      const saved = localStorage.getItem('plegma_item_categories');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.length > 0 && typeof parsed[0] === 'string') {
-          return parsed.map((c: string, i: number) => ({ id: `cat-leg-${i}`, name: c, active: true }));
+      localStorage.removeItem('plegma_item_categories');
+      localStorage.removeItem('plegma_item_subcategories');
+      localStorage.removeItem('plegma_item_units');
+      localStorage.removeItem('plegma_providers');
+      localStorage.removeItem('plegma_clients');
+      localStorage.removeItem('plegma_items');
+      localStorage.removeItem('plegma_provider_items');
+      localStorage.removeItem('plegma_employees');
+      localStorage.removeItem('plegma_users');
+      localStorage.removeItem('plegma_sale_orders');
+      localStorage.removeItem('plegma_master_cash_boxes');
+      localStorage.removeItem('plegma_cash_shifts');
+      localStorage.removeItem('plegma_cash_lines');
+      localStorage.removeItem('plegma_cash_movements');
+      localStorage.removeItem('plegma_cc_movements');
+      localStorage.removeItem('plegma_cc_receipts');
+      localStorage.removeItem('plegma_employee_consumptions');
+      localStorage.removeItem('plegma_audit_logs');
+    } catch (e) {}
+  }, []);
+
+  // Carga inicial desde Supabase para Módulos 1, 2, 3, 4, 6, 7, 8, 9 y 10
+  useEffect(() => {
+    const fetchInitialDataFromSupabase = async () => {
+      try {
+        const [cats, subcats, units, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs] = await Promise.all([
+          configService.getByType('category'),
+          configService.getByType('subcategory'),
+          configService.getByType('unit'),
+          providersService.getAll(),
+          itemsService.getAll(),
+          itemsService.getProviderRelations(),
+          clientsService.getAll(),
+          employeesService.getAll(),
+          usersService.getUsers(),
+          saleOrdersService.getAll(),
+          cashService.getMasterCashBoxes(),
+          cashService.getShifts(),
+          cashService.getLines(),
+          cashService.getMovements(),
+          currentAccountService.getMovements(),
+          currentAccountService.getReceipts(),
+          currentAccountService.getEmployeeConsumptions(),
+          auditLogsService.getAll(),
+        ]);
+        setItemCategories(cats);
+        setItemSubcategories(subcats);
+        setItemUnits(units);
+        setProviders(provs);
+        setItems(fetchedItems);
+        setProviderItems(fetchedRelations);
+        setClients(fetchedClients);
+        setEmployees(fetchedEmps);
+        setUsers(fetchedUsers);
+        setSaleOrders(fetchedSaleOrders);
+        setMasterCashBoxes(fetchedMasterBoxes);
+        setCashShifts(fetchedShifts);
+        setCashLines(fetchedLines);
+        setCashMovements(fetchedMovements);
+        setCcMovements(fetchedCcMovements);
+        setCcReceipts(fetchedReceipts);
+        setEmployeeConsumptions(fetchedEmployeeConsumptions);
+        setAuditLogs(fetchedAuditLogs);
+      } catch (err) {
+        console.error('Error al cargar datos iniciales de Supabase:', err);
+      }
+    };
+
+    fetchInitialDataFromSupabase();
+  }, []);
+
+  const saveItemCategories = async (action: React.SetStateAction<ConfigOption[]>) => {
+    const prev = itemCategories;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setItemCategories(next);
+
+    try {
+      const prevMap = new Map<string, ConfigOption>(prev.map((o) => [o.id, o]));
+      const nextIds = new Set(next.map((o) => o.id));
+
+      for (const p of prev) {
+        if (!nextIds.has(p.id) && !p.id.startsWith('opt-') && !p.id.startsWith('cat-leg-')) {
+          await configService.delete(p.id);
         }
-        return parsed;
       }
-    } catch (e) {}
-    return INITIAL_ITEM_CATEGORIES;
-  });
 
-  const [itemSubcategories, setItemSubcategories] = useState<ConfigOption[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_item_subcategories');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.length > 0 && typeof parsed[0] === 'string') {
-          return parsed.map((c: string, i: number) => ({ id: `scat-leg-${i}`, name: c, active: true }));
+      for (const item of next) {
+        if (item.id.startsWith('opt-') || item.id.startsWith('cat-leg-')) {
+          await configService.create('category', item.name, item.active);
+        } else if (prevMap.has(item.id)) {
+          const old = prevMap.get(item.id)!;
+          if (old.name !== item.name || old.active !== item.active) {
+            await configService.update(item.id, { name: item.name, active: item.active });
+          }
         }
-        return parsed;
       }
-    } catch (e) {}
-    return INITIAL_ITEM_SUBCATEGORIES;
-  });
 
-  const [itemUnits, setItemUnits] = useState<ConfigOption[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_item_units');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.length > 0 && typeof parsed[0] === 'string') {
-          return parsed.map((c: string, i: number) => ({ id: `unit-leg-${i}`, name: c, active: true }));
-        }
-        return parsed;
-      }
-    } catch (e) {}
-    return INITIAL_ITEM_UNITS;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('plegma_employees', JSON.stringify(employees));
-    } catch (e) {}
-  }, [employees]);
-
-  useEffect(() => {
-    localStorage.setItem('plegma_item_categories', JSON.stringify(itemCategories));
-  }, [itemCategories]);
-
-  useEffect(() => {
-    localStorage.setItem('plegma_item_subcategories', JSON.stringify(itemSubcategories));
-  }, [itemSubcategories]);
-
-  useEffect(() => {
-    localStorage.setItem('plegma_item_units', JSON.stringify(itemUnits));
-  }, [itemUnits]);
-
-  const addOrUpdateEmployee = (emp: Employee) => {
-    setEmployees((prev) => {
-      const idx = prev.findIndex((e) => e.id === emp.id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = emp;
-        return copy;
-      }
-      return [emp, ...prev];
-    });
+      const fresh = await configService.getByType('category');
+      if (fresh.length > 0) setItemCategories(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar categorías con Supabase:', e);
+    }
   };
 
-  const toggleEmployeeStatus = (employeeId: string) => {
-    setEmployees((prev) =>
-      prev.map((e) => (e.id === employeeId ? { ...e, active: !e.active } : e))
-    );
+  const saveItemSubcategories = async (action: React.SetStateAction<ConfigOption[]>) => {
+    const prev = itemSubcategories;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setItemSubcategories(next);
+
+    try {
+      const prevMap = new Map<string, ConfigOption>(prev.map((o) => [o.id, o]));
+      const nextIds = new Set(next.map((o) => o.id));
+
+      for (const p of prev) {
+        if (!nextIds.has(p.id) && !p.id.startsWith('opt-') && !p.id.startsWith('scat-leg-')) {
+          await configService.delete(p.id);
+        }
+      }
+
+      for (const item of next) {
+        if (item.id.startsWith('opt-') || item.id.startsWith('scat-leg-')) {
+          await configService.create('subcategory', item.name, item.active);
+        } else if (prevMap.has(item.id)) {
+          const old = prevMap.get(item.id)!;
+          if (old.name !== item.name || old.active !== item.active) {
+            await configService.update(item.id, { name: item.name, active: item.active });
+          }
+        }
+      }
+
+      const fresh = await configService.getByType('subcategory');
+      if (fresh.length > 0) setItemSubcategories(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar subcategorías con Supabase:', e);
+    }
+  };
+
+  const saveItemUnits = async (action: React.SetStateAction<ConfigOption[]>) => {
+    const prev = itemUnits;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setItemUnits(next);
+
+    try {
+      const prevMap = new Map<string, ConfigOption>(prev.map((o) => [o.id, o]));
+      const nextIds = new Set(next.map((o) => o.id));
+
+      for (const p of prev) {
+        if (!nextIds.has(p.id) && !p.id.startsWith('unit-leg-') && !p.id.startsWith('opt-')) {
+          await configService.delete(p.id);
+        }
+      }
+
+      for (const item of next) {
+        if (item.id.startsWith('opt-') || item.id.startsWith('unit-leg-')) {
+          await configService.create('unit', item.name, item.active);
+        } else if (prevMap.has(item.id)) {
+          const old = prevMap.get(item.id)!;
+          if (old.name !== item.name || old.active !== item.active) {
+            await configService.update(item.id, { name: item.name, active: item.active });
+          }
+        }
+      }
+
+      const fresh = await configService.getByType('unit');
+      if (fresh.length > 0) setItemUnits(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar unidades con Supabase:', e);
+    }
+  };
+
+
+  const addOrUpdateEmployee = async (emp: Employee) => {
+    const saved = await employeesService.save(emp);
+    if (saved) {
+      setEmployees((prev) => {
+        const idx = prev.findIndex((e) => e.id === emp.id || e.id === saved.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = saved;
+          return copy;
+        }
+        return [saved, ...prev];
+      });
+      logAudit('Guardar Empleado', 'cliente', saved.id, saved.name);
+    }
+  };
+
+  const toggleEmployeeStatus = async (employeeId: string) => {
+    const target = employees.find((e) => e.id === employeeId);
+    if (!target) return;
+    const updated = { ...target, active: !target.active };
+    const saved = await employeesService.save(updated);
+    if (saved) {
+      setEmployees((prev) =>
+        prev.map((e) => (e.id === employeeId ? saved : e))
+      );
+    }
+  };
+
+  const deleteEmployee = async (employeeId: string) => {
+    const success = await employeesService.delete(employeeId);
+    if (success) {
+      setEmployees((prev) => prev.filter((e) => e.id !== employeeId));
+    }
   };
 
   const addHourlyRateLog = (employeeId: string, newRate: number, notes?: string) => {
@@ -648,22 +741,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
-  const [employeeConsumptions, setEmployeeConsumptions] = useState<EmployeeConsumption[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_employee_consumptions');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_EMPLOYEE_CONSUMPTIONS;
-  });
+  const [employeeConsumptions, setEmployeeConsumptions] = useState<EmployeeConsumption[]>([]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('plegma_employee_consumptions', JSON.stringify(employeeConsumptions));
-    } catch (e) {}
-  }, [employeeConsumptions]);
-
-  const addEmployeeConsumptionFromReceipt = (consumption: EmployeeConsumption) => {
-    setEmployeeConsumptions((prev) => [consumption, ...prev]);
+  const addEmployeeConsumptionFromReceipt = async (consumption: EmployeeConsumption) => {
+    const saved = await currentAccountService.addEmployeeConsumption(consumption);
+    const finalEc = saved || { ...consumption, id: 'ec-' + Date.now() };
+    setEmployeeConsumptions((prev) => [finalEc, ...prev]);
   };
 
   const [employeeAdvances, setEmployeeAdvances] = useState<EmployeeAdvance[]>(() => {
@@ -713,33 +796,56 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [payruns]);
 
   // Cuentas Corrientes State & Persistence
-  const [ccMovements, setCcMovements] = useState<CurrentAccountMovement[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_cc_movements');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_CC_MOVEMENTS;
-  });
+  const [ccMovements, setCcMovementsState] = useState<CurrentAccountMovement[]>([]);
+  const [ccReceipts, setCcReceiptsState] = useState<Receipt[]>([]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('plegma_cc_movements', JSON.stringify(ccMovements));
-    } catch (e) {}
-  }, [ccMovements]);
+  const setCcMovements: React.Dispatch<React.SetStateAction<CurrentAccountMovement[]>> = async (action) => {
+    const prev = ccMovements;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setCcMovementsState(next);
 
-  const [ccReceipts, setCcReceipts] = useState<Receipt[]>(() => {
     try {
-      const saved = localStorage.getItem('plegma_cc_receipts');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_RECEIPTS;
-  });
+      const prevMap = new Map<string, CurrentAccountMovement>(prev.map((m) => [m.id, m]));
+      for (const item of next) {
+        if (!prevMap.has(item.id) || item.id.startsWith('mov-')) {
+          await currentAccountService.addMovement(item);
+        } else {
+          const old = prevMap.get(item.id)!;
+          if (old.lineState !== item.lineState) {
+            await currentAccountService.updateMovementState(item.id, item.lineState);
+          }
+        }
+      }
+      const fresh = await currentAccountService.getMovements();
+      if (fresh.length > 0) setCcMovementsState(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar movimientos de CC con Supabase:', e);
+    }
+  };
 
-  useEffect(() => {
+  const setCcReceipts: React.Dispatch<React.SetStateAction<Receipt[]>> = async (action) => {
+    const prev = ccReceipts;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setCcReceiptsState(next);
+
     try {
-      localStorage.setItem('plegma_cc_receipts', JSON.stringify(ccReceipts));
-    } catch (e) {}
-  }, [ccReceipts]);
+      const prevMap = new Map<string, Receipt>(prev.map((r) => [r.id, r]));
+      for (const item of next) {
+        if (!prevMap.has(item.id) || item.id.startsWith('rec-') || item.id.startsWith('rc-')) {
+          await currentAccountService.saveReceipt(item);
+        } else {
+          const old = prevMap.get(item.id)!;
+          if (old.status !== item.status || old.billedAt !== item.billedAt) {
+            await currentAccountService.saveReceipt(item);
+          }
+        }
+      }
+      const fresh = await currentAccountService.getReceipts();
+      if (fresh.length > 0) setCcReceiptsState(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar recibos con Supabase:', e);
+    }
+  };
 
   const createPayrun = (startDate: string, endDate: string, customPeriodName?: string) => {
     if (!startDate || !endDate) {
@@ -928,61 +1034,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // ----------------------------------------------------
   // CONTROL DE CAJA
   // ----------------------------------------------------
-  const [masterCashBoxes, setMasterCashBoxes] = useState<MasterCashBox[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_master_cash_boxes');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_MASTER_CASH_BOXES;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('plegma_master_cash_boxes', JSON.stringify(masterCashBoxes));
-    } catch (e) {}
-  }, [masterCashBoxes]);
-
-  const [cashShifts, setCashShifts] = useState<CashShift[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_cash_shifts');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_CASH_SHIFTS;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('plegma_cash_shifts', JSON.stringify(cashShifts));
-    } catch (e) {}
-  }, [cashShifts]);
-
-  const [cashLines, setCashLines] = useState<CashLine[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_cash_lines');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_CASH_LINES;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('plegma_cash_lines', JSON.stringify(cashLines));
-    } catch (e) {}
-  }, [cashLines]);
-
-  const [cashMovements, setCashMovements] = useState<CashMovement[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_cash_movements');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_CASH_MOVEMENTS;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('plegma_cash_movements', JSON.stringify(cashMovements));
-    } catch (e) {}
-  }, [cashMovements]);
+  const [masterCashBoxes, setMasterCashBoxes] = useState<MasterCashBox[]>([]);
+  const [cashShifts, setCashShifts] = useState<CashShift[]>([]);
+  const [cashLines, setCashLines] = useState<CashLine[]>([]);
+  const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
 
   // Helper date string with seconds
   const getNowStr = () => {
@@ -991,7 +1046,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
   };
 
-  const openCashShift = (shift: TurnoType, initialLines?: { boxType: string; initialAmount: number }[], notes?: string) => {
+  const openCashShift = async (shift: TurnoType, initialLines?: { boxType: string; initialAmount: number }[], notes?: string): Promise<{ success: boolean; message: string; shift?: CashShift }> => {
     const activeShift = cashShifts.find((s) => s.status === 'Abierta');
     if (activeShift) {
       return { success: false, message: `Ya existe una caja de turno abierta (${activeShift.name}). Debe cerrarla primero.` };
@@ -1001,11 +1056,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const pad = (n: number) => String(n).padStart(2, '0');
     const dateStr = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
     const shiftName = `${shift.toUpperCase()} ${dateStr}`;
-
     const activeUser = users.find((u) => u.id === activeUserId);
 
-    const newShift: CashShift = {
-      id: 'shift-' + Date.now(),
+    const shiftToSave: CashShift = {
+      id: '',
       shift,
       createdAt: getNowStr(),
       name: shiftName,
@@ -1015,29 +1069,63 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       notes,
     };
 
-    setCashShifts((prev) => [newShift, ...prev]);
+    const savedShift = await cashService.saveShift(shiftToSave);
+    const finalShift = savedShift || { ...shiftToSave, id: 'shift-' + Date.now() };
+
+    setCashShifts((prev) => [finalShift, ...prev]);
 
     if (initialLines && initialLines.length > 0) {
-      const newLines: CashLine[] = initialLines.map((l, idx) => ({
-        id: 'line-' + (Date.now() + idx),
-        shiftId: newShift.id,
-        boxType: l.boxType,
-        initialAmount: l.initialAmount,
-        ticketsTotal: 0,
-        expensesTotal: 0,
-        withdrawalsTotal: 0,
-        theoreticalAmount: l.initialAmount,
-        status: 'Abierta',
-        openedByUserId: activeUserId,
-        openedByUserName: activeUser?.name || 'Usuario Autenticado',
-      }));
-      setCashLines((prev) => [...newLines, ...prev]);
+      const createdLines: CashLine[] = [];
+      const createdMovements: CashMovement[] = [];
+
+      for (const l of initialLines) {
+        const lineToSave: CashLine = {
+          id: '',
+          shiftId: finalShift.id,
+          boxType: l.boxType,
+          initialAmount: l.initialAmount,
+          ticketsTotal: 0,
+          expensesTotal: 0,
+          withdrawalsTotal: 0,
+          theoreticalAmount: l.initialAmount,
+          status: 'Abierta',
+          openedByUserId: activeUserId,
+          openedByUserName: activeUser?.name || 'Usuario Autenticado',
+        };
+
+        const savedLine = await cashService.saveLine(lineToSave);
+        const finalLine = savedLine || { ...lineToSave, id: 'line-' + Date.now() + Math.random() };
+        createdLines.push(finalLine);
+
+        if (l.initialAmount > 0) {
+          const initMovToSave: CashMovement = {
+            id: '',
+            lineId: finalLine.id,
+            shiftId: finalShift.id,
+            dateTime: getNowStr(),
+            type: 'Apertura',
+            origin: 'Saldo Inicial',
+            amount: l.initialAmount,
+            userId: activeUserId,
+            userName: activeUser?.name || 'Usuario Autenticado',
+            notes: `Monto inicial de apertura para ${l.boxType}`,
+          };
+
+          const savedMov = await cashService.addMovement(initMovToSave);
+          if (savedMov) createdMovements.push(savedMov);
+        }
+      }
+
+      setCashLines((prev) => [...createdLines, ...prev]);
+      if (createdMovements.length > 0) {
+        setCashMovements((prev) => [...createdMovements, ...prev]);
+      }
     }
 
-    return { success: true, message: `Caja de turno "${shiftName}" abierta correctamente.`, shift: newShift };
+    return { success: true, message: `Caja de turno "${shiftName}" abierta correctamente.`, shift: finalShift };
   };
 
-  const addCashLine = (shiftId: string, boxType: string, initialAmount: number) => {
+  const addCashLine = async (shiftId: string, boxType: string, initialAmount: number): Promise<{ success: boolean; message: string; line?: CashLine }> => {
     const targetShift = cashShifts.find((s) => s.id === shiftId);
     if (!targetShift) return { success: false, message: 'No se encontró la caja de turno.' };
     if (targetShift.status !== 'Abierta') return { success: false, message: 'La caja de turno no está abierta.' };
@@ -1047,11 +1135,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: `Ya existe una línea abierta para "${boxType}" en esta caja.` };
     }
 
-    const lineId = 'line-' + Date.now();
     const activeUser = users.find((u) => u.id === activeUserId);
 
-    const newLine: CashLine = {
-      id: lineId,
+    const lineToSave: CashLine = {
+      id: '',
       shiftId,
       boxType,
       initialAmount,
@@ -1062,13 +1149,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       status: 'Abierta',
     };
 
+    const savedLine = await cashService.saveLine(lineToSave);
+    const newLine = savedLine || { ...lineToSave, id: 'line-' + Date.now() };
+
     setCashLines((prev) => [...prev, newLine]);
 
-    // Create initial balance movement if > 0
     if (initialAmount > 0) {
       const initMov: CashMovement = {
-        id: 'cm-' + Date.now(),
-        lineId,
+        id: '',
+        lineId: newLine.id,
         shiftId,
         dateTime: getNowStr(),
         type: 'Apertura',
@@ -1078,15 +1167,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         userName: activeUser?.name || 'Usuario Autenticado',
         notes: `Monto inicial de apertura para ${boxType}`,
       };
-      setCashMovements((prev) => [initMov, ...prev]);
+
+      const savedMov = await cashService.addMovement(initMov);
+      if (savedMov) {
+        setCashMovements((prev) => [savedMov, ...prev]);
+      }
     }
 
     return { success: true, message: `Línea "${boxType}" agregada a la caja correctamente.`, line: newLine };
   };
 
-  const recordCashMovement = (movement: Omit<CashMovement, 'id' | 'dateTime' | 'userId' | 'userName'>) => {
+  const recordCashMovement = async (movement: Omit<CashMovement, 'id' | 'dateTime' | 'userId' | 'userName'>): Promise<void> => {
     const targetLine = cashLines.find((l) => l.id === movement.lineId);
-    // [R01] Bloqueo de Líneas Cerradas
     if (!targetLine || targetLine.status !== 'Abierta') {
       console.warn('No se puede imputar movimientos a una línea de caja cerrada o inexistente.');
       return;
@@ -1094,60 +1186,59 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const activeUser = users.find((u) => u.id === activeUserId);
     const nowStr = getNowStr();
-    const movId = 'cm-' + Date.now();
 
-    const newMov: CashMovement = {
+    const movToSave: CashMovement = {
       ...movement,
-      id: movId,
+      id: '',
       dateTime: nowStr,
       userId: activeUserId,
       userName: activeUser?.name || 'Usuario Autenticado',
     };
 
-    setCashMovements((prev) => [newMov, ...prev]);
+    const savedMov = await cashService.addMovement(movToSave);
+    const finalMov = savedMov || { ...movToSave, id: 'cm-' + Date.now() };
 
-    // Recalculate CashLine totals automatically
+    setCashMovements((prev) => [finalMov, ...prev]);
+
+    let ticketsTotal = targetLine.ticketsTotal;
+    let expensesTotal = targetLine.expensesTotal;
+    let withdrawalsTotal = targetLine.withdrawalsTotal;
+
+    if (movement.type === 'Ingreso' || movement.type === 'Ticket' || (movement.type === 'Ajuste' && movement.amount > 0)) {
+      ticketsTotal += Math.abs(movement.amount);
+    } else if (movement.type === 'Salida' || movement.type === 'Gasto' || movement.type === 'Consumo' || (movement.type === 'Ajuste' && movement.amount < 0)) {
+      expensesTotal += Math.abs(movement.amount);
+    } else if (movement.type === 'Retiro' || movement.type === 'Traspaso') {
+      if (movement.amount < 0) {
+        withdrawalsTotal += Math.abs(movement.amount);
+      } else {
+        ticketsTotal += Math.abs(movement.amount);
+      }
+    }
+
+    const theoreticalAmount = targetLine.initialAmount + ticketsTotal - expensesTotal - withdrawalsTotal;
+
+    const updatedLine: CashLine = {
+      ...targetLine,
+      ticketsTotal,
+      expensesTotal,
+      withdrawalsTotal,
+      theoreticalAmount,
+    };
+
+    await cashService.saveLine(updatedLine);
+
     setCashLines((prev) =>
-      prev.map((l) => {
-        if (l.id !== movement.lineId) return l;
-
-        let ticketsTotal = l.ticketsTotal;
-        let expensesTotal = l.expensesTotal;
-        let withdrawalsTotal = l.withdrawalsTotal;
-
-        if (movement.type === 'Ingreso' || movement.type === 'Ticket' || (movement.type === 'Ajuste' && movement.amount > 0)) {
-          ticketsTotal += Math.abs(movement.amount);
-        } else if (movement.type === 'Salida' || movement.type === 'Gasto' || movement.type === 'Consumo' || (movement.type === 'Ajuste' && movement.amount < 0)) {
-          expensesTotal += Math.abs(movement.amount);
-        } else if (movement.type === 'Retiro' || movement.type === 'Traspaso') {
-          if (movement.amount < 0) {
-            withdrawalsTotal += Math.abs(movement.amount);
-          } else {
-            ticketsTotal += Math.abs(movement.amount);
-          }
-        }
-
-        const theoreticalAmount = l.initialAmount + ticketsTotal - expensesTotal - withdrawalsTotal;
-
-        return {
-          ...l,
-          ticketsTotal,
-          expensesTotal,
-          withdrawalsTotal,
-          theoreticalAmount,
-        };
-      })
+      prev.map((l) => (l.id === movement.lineId ? updatedLine : l))
     );
   };
 
-  const withdrawCashToMaster = ({ lineId, amount, masterBoxId, notes }: CashWithdrawalPayload) => {
+  const withdrawCashToMaster = async ({ lineId, amount, masterBoxId, notes }: CashWithdrawalPayload): Promise<{ success: boolean; message: string }> => {
     const targetLine = cashLines.find((l) => l.id === lineId);
-    // [R02] Restricción de Retiros
     if (!targetLine || targetLine.status !== 'Abierta') {
       return { success: false, message: 'No se pueden efectuar retiros desde una línea de caja cerrada.' };
     }
 
-    // [R05] Destino de Retiros: Cajas Maestras
     const targetMaster = masterCashBoxes.find((mb) => mb.id === masterBoxId);
     if (!targetMaster) {
       return { success: false, message: 'Debe seleccionar una Caja Maestra de destino válida.' };
@@ -1160,9 +1251,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const activeUser = users.find((u) => u.id === activeUserId);
     const nowStr = getNowStr();
 
-    // 1. Create withdrawal movement in CashLine
     const withdrawMov: CashMovement = {
-      id: 'cm-' + Date.now(),
+      id: '',
       lineId: targetLine.id,
       shiftId: targetLine.shiftId,
       dateTime: nowStr,
@@ -1173,33 +1263,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       userId: activeUserId,
       userName: activeUser?.name || 'Usuario Autenticado',
       notes,
+      targetMasterBoxId: masterBoxId,
     };
 
-    setCashMovements((prev) => [withdrawMov, ...prev]);
+    const savedMov = await cashService.addMovement(withdrawMov);
+    const finalMov = savedMov || { ...withdrawMov, id: 'cm-' + Date.now() };
 
-    // 2. Update CashLine totals
+    setCashMovements((prev) => [finalMov, ...prev]);
+
+    const withdrawalsTotal = targetLine.withdrawalsTotal + Math.abs(amount);
+    const theoreticalAmount = targetLine.initialAmount + targetLine.ticketsTotal - targetLine.expensesTotal - withdrawalsTotal;
+    const updatedLine: CashLine = {
+      ...targetLine,
+      withdrawalsTotal,
+      theoreticalAmount,
+    };
+
+    await cashService.saveLine(updatedLine);
+
     setCashLines((prev) =>
-      prev.map((l) => {
-        if (l.id !== lineId) return l;
-        const withdrawalsTotal = l.withdrawalsTotal + Math.abs(amount);
-        const theoreticalAmount = l.initialAmount + l.ticketsTotal - l.expensesTotal - withdrawalsTotal;
-        return {
-          ...l,
-          withdrawalsTotal,
-          theoreticalAmount,
-        };
-      })
+      prev.map((l) => (l.id === lineId ? updatedLine : l))
     );
 
-    // 3. Update MasterCashBox balance
+    const newBalance = targetMaster.currentBalance + Math.abs(amount);
+    await cashService.updateMasterCashBoxBalance(masterBoxId, newBalance);
+
     setMasterCashBoxes((prev) =>
-      prev.map((mb) => (mb.id === masterBoxId ? { ...mb, currentBalance: mb.currentBalance + Math.abs(amount) } : mb))
+      prev.map((mb) => (mb.id === masterBoxId ? { ...mb, currentBalance: newBalance } : mb))
     );
 
     return { success: true, message: `Retiro de $${amount.toLocaleString('es-AR')} a ${targetMaster.name} registrado con éxito.` };
   };
 
-  const transferCashBetweenLines = (payload: { sourceLineId: string; targetLineId: string; amount: number; notes?: string }) => {
+  const transferCashBetweenLines = async (payload: { sourceLineId: string; targetLineId: string; amount: number; notes?: string }): Promise<{ success: boolean; message: string }> => {
     const sourceLine = cashLines.find((l) => l.id === payload.sourceLineId);
     const targetLine = cashLines.find((l) => l.id === payload.targetLineId);
     if (!sourceLine || sourceLine.status !== 'Abierta') {
@@ -1216,7 +1312,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const nowStr = getNowStr();
 
     const sourceMov: CashMovement = {
-      id: 'cm-' + Date.now(),
+      id: '',
       lineId: sourceLine.id,
       shiftId: sourceLine.shiftId,
       dateTime: nowStr,
@@ -1227,10 +1323,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       userId: activeUserId,
       userName: activeUser?.name || 'Usuario Autenticado',
       notes: payload.notes,
+      targetLineId: targetLine.id,
     };
 
     const targetMov: CashMovement = {
-      id: 'cm-' + (Date.now() + 1),
+      id: '',
       lineId: targetLine.id,
       shiftId: targetLine.shiftId,
       dateTime: nowStr,
@@ -1241,36 +1338,45 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       userId: activeUserId,
       userName: activeUser?.name || 'Usuario Autenticado',
       notes: payload.notes,
+      targetLineId: sourceLine.id,
     };
 
-    setCashMovements((prev) => [sourceMov, targetMov, ...prev]);
+    const savedSource = await cashService.addMovement(sourceMov);
+    const savedTarget = await cashService.addMovement(targetMov);
+
+    setCashMovements((prev) => [
+      savedTarget || { ...targetMov, id: 'cm-' + (Date.now() + 1) },
+      savedSource || { ...sourceMov, id: 'cm-' + Date.now() },
+      ...prev,
+    ]);
+
+    const sourceWithdrawals = sourceLine.withdrawalsTotal + Math.abs(payload.amount);
+    const sourceTheoretical = sourceLine.initialAmount + sourceLine.ticketsTotal - sourceLine.expensesTotal - sourceWithdrawals;
+    const updatedSource: CashLine = {
+      ...sourceLine,
+      withdrawalsTotal: sourceWithdrawals,
+      theoreticalAmount: sourceTheoretical,
+    };
+
+    const targetTickets = targetLine.ticketsTotal + Math.abs(payload.amount);
+    const targetTheoretical = targetLine.initialAmount + targetTickets - targetLine.expensesTotal - targetLine.withdrawalsTotal;
+    const updatedTarget: CashLine = {
+      ...targetLine,
+      ticketsTotal: targetTickets,
+      theoreticalAmount: targetTheoretical,
+    };
+
+    await cashService.saveLine(updatedSource);
+    await cashService.saveLine(updatedTarget);
 
     setCashLines((prev) =>
-      prev.map((l) => {
-        if (l.id === sourceLine.id) {
-          const withdrawalsTotal = l.withdrawalsTotal + Math.abs(payload.amount);
-          return {
-            ...l,
-            withdrawalsTotal,
-            theoreticalAmount: l.initialAmount + l.ticketsTotal - l.expensesTotal - withdrawalsTotal,
-          };
-        }
-        if (l.id === targetLine.id) {
-          const initialAmount = l.initialAmount + Math.abs(payload.amount);
-          return {
-            ...l,
-            initialAmount,
-            theoreticalAmount: initialAmount + l.ticketsTotal - l.expensesTotal - l.withdrawalsTotal,
-          };
-        }
-        return l;
-      })
+      prev.map((l) => (l.id === sourceLine.id ? updatedSource : l.id === targetLine.id ? updatedTarget : l))
     );
 
     return { success: true, message: `Transferencia de $${payload.amount.toLocaleString('es-AR')} de ${sourceLine.boxType} a ${targetLine.boxType} realizada con éxito.` };
   };
 
-  const closeCashLine = (lineId: string, realAmount: number, differenceNotes?: string) => {
+  const closeCashLine = async (lineId: string, realAmount: number, differenceNotes?: string): Promise<{ success: boolean; message: string }> => {
     const targetLine = cashLines.find((l) => l.id === lineId);
     if (!targetLine) return { success: false, message: 'Línea de caja no encontrada.' };
 
@@ -1287,23 +1393,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'Al existir diferencia entre el monto real y el teórico, la observación es OBLIGATORIA.' };
     }
 
+    const updatedLine: CashLine = {
+      ...targetLine,
+      theoreticalAmount,
+      realAmount,
+      difference,
+      differenceNotes: differenceNotes?.trim(),
+      status: 'Cerrada' as const,
+      closedAt: nowStr,
+    };
+
+    await cashService.saveLine(updatedLine);
+
     setCashLines((prev) =>
-      prev.map((l) =>
-        l.id === lineId
-          ? {
-              ...l,
-              theoreticalAmount,
-              realAmount,
-              difference,
-              differenceNotes: differenceNotes?.trim(),
-              status: 'Cerrada' as const,
-              closedAt: nowStr,
-            }
-          : l
-      )
+      prev.map((l) => (l.id === lineId ? updatedLine : l))
     );
 
-    // [R07] Trazabilidad: Log audit log if difference != 0
     if (difference !== 0) {
       const auditLog: AuditLog = {
         id: 'aud-' + Date.now(),
@@ -1323,7 +1428,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { success: true, message: `Línea de caja "${targetLine.boxType}" cerrada correctamente.` };
   };
 
-  const closeCashShift = (shiftId: string) => {
+  const closeCashShift = async (shiftId: string): Promise<{ success: boolean; message: string }> => {
     const targetShift = cashShifts.find((s) => s.id === shiftId);
     if (!targetShift) return { success: false, message: 'Caja de turno no encontrada.' };
 
@@ -1332,7 +1437,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'La caja de turno no posee líneas registradas.' };
     }
 
-    // [R04] Precondición de Cierre de Turno: todas las líneas deben estar Cerrada o Conciliada
     const openLines = shiftLines.filter((l) => l.status === 'Abierta');
     if (openLines.length > 0) {
       return {
@@ -1344,42 +1448,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const totalDiff = shiftLines.reduce((acc, l) => acc + (l.difference || 0), 0);
     const nowStr = getNowStr();
 
+    const updatedShift: CashShift = {
+      ...targetShift,
+      status: 'Cerrada' as const,
+      closedAt: nowStr,
+      totalDifference: totalDiff,
+    };
+
+    await cashService.saveShift(updatedShift);
+
     setCashShifts((prev) =>
-      prev.map((s) =>
-        s.id === shiftId
-          ? {
-              ...s,
-              status: 'Cerrada' as const,
-              closedAt: nowStr,
-              totalDifference: totalDiff,
-            }
-          : s
-      )
+      prev.map((s) => (s.id === shiftId ? updatedShift : s))
     );
 
     return { success: true, message: `Caja de turno "${targetShift.name}" cerrada correctamente.` };
   };
 
-  const reconcileCashShift = (shiftId: string) => {
+  const reconcileCashShift = async (shiftId: string): Promise<{ success: boolean; message: string }> => {
     const targetShift = cashShifts.find((s) => s.id === shiftId);
     if (!targetShift) return { success: false, message: 'Caja de turno no encontrada.' };
 
     const activeUser = users.find((u) => u.id === activeUserId);
     const nowStr = getNowStr();
 
-    // Reconcile shift and lines
+    const updatedShift: CashShift = {
+      ...targetShift,
+      status: 'Conciliada' as const,
+      reconciledAt: nowStr,
+      reconciledByUserName: activeUser?.name || 'Usuario Autenticado',
+    };
+
+    await cashService.saveShift(updatedShift);
+
     setCashShifts((prev) =>
-      prev.map((s) =>
-        s.id === shiftId
-          ? {
-              ...s,
-              status: 'Conciliada' as const,
-              reconciledAt: nowStr,
-              reconciledByUserName: activeUser?.name || 'Usuario Autenticado',
-            }
-          : s
-      )
+      prev.map((s) => (s.id === shiftId ? updatedShift : s))
     );
+
+    const shiftLines = cashLines.filter((l) => l.shiftId === shiftId);
+    for (const line of shiftLines) {
+      const updatedLine: CashLine = { ...line, status: 'Conciliada' };
+      await cashService.saveLine(updatedLine);
+    }
 
     setCashLines((prev) =>
       prev.map((l) => (l.shiftId === shiftId ? { ...l, status: 'Conciliada' as const } : l))
@@ -1388,12 +1497,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { success: true, message: `Caja de turno "${targetShift.name}" conciliada exitosamente.` };
   };
 
-  const voidCashShift = (shiftId: string, reason: string) => {
+  const voidCashShift = async (shiftId: string, reason: string): Promise<{ success: boolean; message: string }> => {
     const targetShift = cashShifts.find((s) => s.id === shiftId);
     if (!targetShift) return { success: false, message: 'Caja de turno no encontrada.' };
 
+    const updatedShift: CashShift = {
+      ...targetShift,
+      status: 'Anulada' as const,
+      voidReason: reason,
+    };
+
+    await cashService.saveShift(updatedShift);
+
     setCashShifts((prev) =>
-      prev.map((s) => (s.id === shiftId ? { ...s, status: 'Anulada' as const, voidReason: reason } : s))
+      prev.map((s) => (s.id === shiftId ? updatedShift : s))
     );
 
     return { success: true, message: `Caja de turno "${targetShift.name}" anulada.` };
@@ -1640,53 +1757,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { success: true, message: `OK de Cumplimiento registrado exitosamente por ${userName} para "${target.clientName}".` };
   };
 
-  // ----------------------------------------------------
-  // CONFIGURACIÓN DE MESAS, TIPOS DE VENTA Y SITIOS
-  // ----------------------------------------------------
-  const [siteConfigs, setSiteConfigs] = useState<SiteConfig[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_site_configs');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_SITE_CONFIGS;
-  });
+  const [siteConfigs, setSiteConfigs] = useState<SiteConfig[]>([]);
+  const [tableConfigs, setTableConfigs] = useState<RestaurantTableConfig[]>([]);
+  const [saleTypeConfigs, setSaleTypeConfigs] = useState<SaleTypeConfig[]>([]);
 
   useEffect(() => {
-    try {
-      localStorage.setItem('plegma_site_configs', JSON.stringify(siteConfigs));
-    } catch (e) {}
-  }, [siteConfigs]);
-
-  const [tableConfigs, setTableConfigs] = useState<RestaurantTableConfig[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_table_configs');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_TABLE_CONFIGS;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('plegma_table_configs', JSON.stringify(tableConfigs));
-    } catch (e) {}
-  }, [tableConfigs]);
-
-  const [saleTypeConfigs, setSaleTypeConfigs] = useState<SaleTypeConfig[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_sale_type_configs');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_SALE_TYPE_CONFIGS;
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('plegma_sale_type_configs', JSON.stringify(saleTypeConfigs));
-    } catch (e) {}
-  }, [saleTypeConfigs]);
+    posConfigService.getSites().then((data) => {
+      setSiteConfigs(data);
+    });
+    posConfigService.getTables().then((data) => {
+      setTableConfigs(data);
+    });
+    posConfigService.getSaleTypes().then((data) => {
+      setSaleTypeConfigs(data);
+    });
+  }, []);
 
   // SITIOS METHODS
-  const addSiteConfig = (data: Omit<SiteConfig, 'id'>) => {
+  const addSiteConfig = async (data: Omit<SiteConfig, 'id'>) => {
     if (!data.name || !data.name.trim()) {
       return { success: false, message: 'El nombre del sitio es obligatorio (R-S01).' };
     }
@@ -1698,17 +1786,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'El orden debe ser mayor o igual a 0 (R-S03).' };
     }
 
-    const newSite: SiteConfig = {
+    const saved = await posConfigService.createSite({
+      ...data,
+      name: data.name.trim(),
+    });
+
+    const newSite: SiteConfig = saved || {
       ...data,
       id: 'site-' + Date.now(),
       name: data.name.trim(),
     };
 
-    setSiteConfigs((prev) => [...prev, newSite].sort((a, b) => a.order - b.order));
+    setSiteConfigs((prev) => [...prev.filter((s) => s.id !== newSite.id), newSite].sort((a, b) => a.order - b.order));
     return { success: true, message: `Sitio "${newSite.name}" creado exitosamente.` };
   };
 
-  const updateSiteConfig = (updatedSite: SiteConfig) => {
+  const updateSiteConfig = async (updatedSite: SiteConfig) => {
     if (!updatedSite.name || !updatedSite.name.trim()) {
       return { success: false, message: 'El nombre del sitio es obligatorio.' };
     }
@@ -1718,6 +1811,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     if (updatedSite.order < 0) {
       return { success: false, message: 'El orden debe ser mayor o igual a 0 (R-S03).' };
+    }
+
+    if (!updatedSite.id.startsWith('site-')) {
+      await posConfigService.updateSite(updatedSite.id, updatedSite);
     }
 
     setSiteConfigs((prev) =>
@@ -1732,17 +1829,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { success: true, message: `Sitio "${updatedSite.name}" actualizado correctamente.` };
   };
 
-  const toggleSiteStatus = (siteId: string) => {
+  const toggleSiteStatus = async (siteId: string) => {
     const target = siteConfigs.find((s) => s.id === siteId);
     if (!target) return { success: false, message: 'Sitio no encontrado.' };
 
     const newStatus = !target.active;
+    if (!siteId.startsWith('site-')) {
+      await posConfigService.updateSite(siteId, { active: newStatus });
+    }
     setSiteConfigs((prev) => prev.map((s) => (s.id === siteId ? { ...s, active: newStatus } : s)));
 
     return { success: true, message: `Sitio "${target.name}" ${newStatus ? 'activado' : 'desactivado'}.` };
   };
 
-  const deleteSiteConfig = (siteId: string) => {
+  const deleteSiteConfig = async (siteId: string) => {
     const target = siteConfigs.find((s) => s.id === siteId);
     if (!target) return { success: false, message: 'Sitio no encontrado.' };
 
@@ -1752,12 +1852,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: `No se permite eliminar el sitio "${target.name}" porque posee mesas asociadas (R-S02).` };
     }
 
+    if (!siteId.startsWith('site-')) {
+      await posConfigService.deleteSite(siteId);
+    }
+
     setSiteConfigs((prev) => prev.filter((s) => s.id !== siteId));
     return { success: true, message: `Sitio "${target.name}" eliminado.` };
   };
 
   // MESAS METHODS
-  const addTableConfig = (data: Omit<RestaurantTableConfig, 'id' | 'isFree'>) => {
+  const addTableConfig = async (data: Omit<RestaurantTableConfig, 'id' | 'isFree'>) => {
     if (!data.number || !data.number.trim()) {
       return { success: false, message: 'El número o código de mesa es obligatorio (R-M01).' };
     }
@@ -1773,20 +1877,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'El sitio seleccionado no existe o está inactivo (R-M03 / A-S01).' };
     }
 
-    const newTable: RestaurantTableConfig = {
+    const saved = await posConfigService.createTable({
+      ...data,
+      number: data.number.trim(),
+      siteName: targetSite.name,
+      isFree: true,
+      active: true,
+    });
+
+    const newTable: RestaurantTableConfig = saved || {
       ...data,
       id: 'tbl-cfg-' + Date.now(),
       number: data.number.trim(),
       siteName: targetSite.name,
-      isFree: true, // [A-M02] Estado por defecto 'Sí'
+      isFree: true,
       active: true,
     };
 
-    setTableConfigs((prev) => [...prev, newTable]);
+    setTableConfigs((prev) => [...prev.filter((t) => t.id !== newTable.id), newTable]);
     return { success: true, message: `Mesa "${newTable.number}" creada exitosamente.` };
   };
 
-  const updateTableConfig = (updatedTable: RestaurantTableConfig) => {
+  const updateTableConfig = async (updatedTable: RestaurantTableConfig) => {
     if (!updatedTable.number || !updatedTable.number.trim()) {
       return { success: false, message: 'El número de mesa es obligatorio.' };
     }
@@ -1803,29 +1915,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     const finalTable = { ...updatedTable, number: updatedTable.number.trim(), siteName: targetSite.name };
+    if (!updatedTable.id.startsWith('tbl-')) {
+      await posConfigService.updateTable(updatedTable.id, finalTable);
+    }
     setTableConfigs((prev) => prev.map((t) => (t.id === updatedTable.id ? finalTable : t)));
     return { success: true, message: `Mesa "${updatedTable.number}" actualizada correctamente.` };
   };
 
-  const toggleTableStatus = (tableId: string) => {
+  const toggleTableStatus = async (tableId: string) => {
     const target = tableConfigs.find((t) => t.id === tableId);
     if (!target) return { success: false, message: 'Mesa no encontrada.' };
 
     const newActive = !target.active;
+    if (!tableId.startsWith('tbl-')) {
+      await posConfigService.updateTable(tableId, { active: newActive });
+    }
     setTableConfigs((prev) => prev.map((t) => (t.id === tableId ? { ...t, active: newActive } : t)));
     return { success: true, message: `Mesa "${target.number}" ${newActive ? 'activada' : 'desactivada'}.` };
   };
 
-  const toggleTableFree = (tableId: string) => {
+  const toggleTableFree = async (tableId: string) => {
     const target = tableConfigs.find((t) => t.id === tableId);
     if (!target) return { success: false, message: 'Mesa no encontrada.' };
 
     const newFree = !target.isFree;
+    if (!tableId.startsWith('tbl-')) {
+      await posConfigService.updateTable(tableId, { isFree: newFree });
+    }
     setTableConfigs((prev) => prev.map((t) => (t.id === tableId ? { ...t, isFree: newFree } : t)));
     return { success: true, message: `Mesa "${target.number}" marcada como ${newFree ? 'Libre' : 'Ocupada/No Libre'}.` };
   };
 
-  const deleteTableConfig = (tableId: string) => {
+  const deleteTableConfig = async (tableId: string) => {
     const target = tableConfigs.find((t) => t.id === tableId);
     if (!target) return { success: false, message: 'Mesa no encontrada.' };
 
@@ -1835,12 +1956,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: `No se permite eliminar la mesa "${target.number}" porque registra historial de reservas asociadas (R-M04).` };
     }
 
+    if (!tableId.startsWith('tbl-')) {
+      await posConfigService.deleteTable(tableId);
+    }
+
     setTableConfigs((prev) => prev.filter((t) => t.id !== tableId));
     return { success: true, message: `Mesa "${target.number}" eliminada.` };
   };
 
   // TIPOS DE VENTA METHODS
-  const addSaleTypeConfig = (data: Omit<SaleTypeConfig, 'id'>) => {
+  const addSaleTypeConfig = async (data: Omit<SaleTypeConfig, 'id'>) => {
     if (!data.name || !data.name.trim()) {
       return { success: false, message: 'El nombre del tipo de venta es obligatorio (R-TV01).' };
     }
@@ -1849,17 +1974,22 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: `El tipo de venta "${data.name}" ya existe (R-TV01).` };
     }
 
-    const newSt: SaleTypeConfig = {
+    const saved = await posConfigService.createSaleType({
+      ...data,
+      name: data.name.trim(),
+    });
+
+    const newSt: SaleTypeConfig = saved || {
       ...data,
       id: 'st-' + Date.now(),
       name: data.name.trim(),
     };
 
-    setSaleTypeConfigs((prev) => [...prev, newSt]);
+    setSaleTypeConfigs((prev) => [...prev.filter((st) => st.id !== newSt.id), newSt]);
     return { success: true, message: `Tipo de Venta "${newSt.name}" registrado exitosamente.` };
   };
 
-  const updateSaleTypeConfig = (updatedSt: SaleTypeConfig) => {
+  const updateSaleTypeConfig = async (updatedSt: SaleTypeConfig) => {
     if (!updatedSt.name || !updatedSt.name.trim()) {
       return { success: false, message: 'El nombre del tipo de venta es obligatorio.' };
     }
@@ -1868,22 +1998,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: `Ya existe otro tipo de venta con el nombre "${updatedSt.name}" (R-TV01).` };
     }
 
+    if (!updatedSt.id.startsWith('st-')) {
+      await posConfigService.updateSaleType(updatedSt.id, updatedSt);
+    }
+
     setSaleTypeConfigs((prev) => prev.map((st) => (st.id === updatedSt.id ? { ...updatedSt, name: updatedSt.name.trim() } : st)));
     return { success: true, message: `Tipo de Venta "${updatedSt.name}" actualizado correctamente.` };
   };
 
-  const toggleSaleTypeStatus = (stId: string) => {
+  const toggleSaleTypeStatus = async (stId: string) => {
     const target = saleTypeConfigs.find((st) => st.id === stId);
     if (!target) return { success: false, message: 'Tipo de Venta no encontrado.' };
 
     const newActive = !target.active;
+    if (!stId.startsWith('st-')) {
+      await posConfigService.updateSaleType(stId, { active: newActive });
+    }
     setSaleTypeConfigs((prev) => prev.map((st) => (st.id === stId ? { ...st, active: newActive } : st)));
     return { success: true, message: `Tipo de Venta "${target.name}" ${newActive ? 'activado' : 'desactivado'}.` };
   };
 
-  const deleteSaleTypeConfig = (stId: string) => {
+  const deleteSaleTypeConfig = async (stId: string) => {
     const target = saleTypeConfigs.find((st) => st.id === stId);
     if (!target) return { success: false, message: 'Tipo de Venta no encontrado.' };
+
+    if (!stId.startsWith('st-')) {
+      await posConfigService.deleteSaleType(stId);
+    }
 
     setSaleTypeConfigs((prev) => prev.filter((st) => st.id !== stId));
     return { success: true, message: `Tipo de Venta "${target.name}" eliminado.` };
@@ -1957,21 +2098,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // ----------------------------------------------------
   // PEDIDOS Y VENTAS (COMMERCIAL ENGINE)
   // ----------------------------------------------------
-  const [saleOrders, setSaleOrders] = useState<SaleOrder[]>(() => {
-    try {
-      const saved = localStorage.getItem('plegma_sale_orders');
-      if (saved) return JSON.parse(saved);
-    } catch (e) {}
-    return INITIAL_SALE_ORDERS;
-  });
+  const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('plegma_sale_orders', JSON.stringify(saleOrders));
-    } catch (e) {}
-  }, [saleOrders]);
-
-  const createSaleOrder = (data: Omit<SaleOrder, 'id' | 'orderNumber' | 'createdAt' | 'status' | 'createdByUserId' | 'createdByUserName' | 't1CreatedAt'>) => {
+  const createSaleOrder = async (data: Omit<SaleOrder, 'id' | 'orderNumber' | 'createdAt' | 'status' | 'createdByUserId' | 'createdByUserName' | 't1CreatedAt'>): Promise<{ success: boolean; message: string; order?: SaleOrder }> => {
     // Validation: Mandatory open cash shift to take orders (Observacion 4)
     const activeShift = cashShifts.find((s) => s.status === 'Abierta');
     if (!activeShift) {
@@ -2005,9 +2134,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Dynamic Recalculation (A04)
     const recalculatedTotal = data.items.reduce((acc, i) => acc + i.subtotal, 0);
 
-    const newOrder: SaleOrder = {
+    const orderToSave: SaleOrder = {
       ...data,
-      id: 'ord-' + Date.now(),
+      id: '',
       orderNumber: nextNum,
       createdAt: nowStr,
       t1CreatedAt: nowStr, // T1: Inicio
@@ -2017,11 +2146,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       createdByUserName: activeUser?.name || 'Usuario Autenticado',
     };
 
-    setSaleOrders((prev) => [newOrder, ...prev]);
-    return { success: true, message: `Pedido #${nextNum} registrado exitosamente.`, order: newOrder };
+    const saved = await saleOrdersService.save(orderToSave);
+    const finalOrder = saved || { ...orderToSave, id: 'ord-' + Date.now() };
+
+    setSaleOrders((prev) => [finalOrder, ...prev]);
+    return { success: true, message: `Pedido #${finalOrder.orderNumber || nextNum} registrado exitosamente.`, order: finalOrder };
   };
 
-  const updateSaleOrder = (updatedOrder: SaleOrder) => {
+  const updateSaleOrder = async (updatedOrder: SaleOrder): Promise<{ success: boolean; message: string }> => {
     const target = saleOrders.find((o) => o.id === updatedOrder.id);
     if (!target) return { success: false, message: 'Pedido no encontrado.' };
 
@@ -2032,13 +2164,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     // Dynamic Recalculation (A04)
     const recalculatedTotal = updatedOrder.items.reduce((acc, i) => acc + i.subtotal, 0);
-    const finalOrder = { ...updatedOrder, totalAmount: recalculatedTotal };
+    const finalOrderPayload = { ...updatedOrder, totalAmount: recalculatedTotal };
+
+    const saved = await saleOrdersService.save(finalOrderPayload);
+    const finalOrder = saved || finalOrderPayload;
 
     setSaleOrders((prev) => prev.map((o) => (o.id === updatedOrder.id ? finalOrder : o)));
     return { success: true, message: `Pedido #${updatedOrder.orderNumber} actualizado correctamente.` };
   };
 
-  const generateComandaPDF = (orderId: string) => {
+  const generateComandaPDF = async (orderId: string): Promise<{ success: boolean; message: string; pdfUrl?: string }> => {
     const target = saleOrders.find((o) => o.id === orderId);
     if (!target) return { success: false, message: 'Pedido no encontrado.' };
 
@@ -2049,13 +2184,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const nowStr = getNowStr();
     const pdfUrl = `comanda_${target.orderNumber}.pdf`;
+    const newStatus = target.status === 'Pendiente' ? 'Comandado' : target.status;
+
+    await saleOrdersService.updateStatus(orderId, newStatus, { t2ComandaAt: nowStr });
 
     setSaleOrders((prev) =>
       prev.map((o) =>
         o.id === orderId
           ? {
               ...o,
-              status: o.status === 'Pendiente' ? ('Comandado' as const) : o.status,
+              status: newStatus as any,
               t2ComandaAt: nowStr, // [A05] Timestamp T2
               comandaPdfUrl: pdfUrl,
             }
@@ -2066,11 +2204,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { success: true, message: `Comanda emitida y enviada a cocina/barra para Pedido #${target.orderNumber}.`, pdfUrl };
   };
 
-  const updateSaleOrderStatus = (orderId: string, status: OrderStatus) => {
+  const updateSaleOrderStatus = async (orderId: string, status: OrderStatus): Promise<{ success: boolean; message: string }> => {
     const target = saleOrders.find((o) => o.id === orderId);
     if (!target) return { success: false, message: 'Pedido no encontrado.' };
 
     const nowStr = getNowStr();
+    const timestamps: { t3KitchenOutputAt?: string; t4DeliveredAt?: string } = {};
+
+    if (status === 'Listo' && !target.t3KitchenOutputAt) {
+      timestamps.t3KitchenOutputAt = nowStr;
+    }
+    if (status === 'Entregado' && !target.t4DeliveredAt) {
+      timestamps.t4DeliveredAt = nowStr;
+    }
+
+    await saleOrdersService.updateStatus(orderId, status, timestamps);
 
     setSaleOrders((prev) =>
       prev.map((o) => {
@@ -2089,7 +2237,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { success: true, message: `Estado del Pedido #${target.orderNumber} actualizado a "${status}".` };
   };
 
-  const processOrderBilling = (orderId: string, billing: Omit<OrderBillingInfo, 'billedAt' | 'ticketNumber'>) => {
+  const processOrderBilling = async (orderId: string, billing: Omit<OrderBillingInfo, 'billedAt' | 'ticketNumber'>): Promise<{ success: boolean; message: string; ticketNumber?: string }> => {
     const target = saleOrders.find((o) => o.id === orderId);
     if (!target) return { success: false, message: 'Pedido no encontrado.' };
 
@@ -2105,7 +2253,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     // Find Client
-    const client = INITIAL_CC_CLIENTS.find((c) => c.id === billing.clientId);
+    const client = clients.find((c) => c.id === billing.clientId);
 
     // [R05] Restricción Cta Cte
     if (billing.paymentCondition === 'Cuenta Corriente') {
@@ -2184,29 +2332,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
     }
 
+    const updatedOrder: SaleOrder = {
+      ...target,
+      status: 'Facturado' as const,
+      ticketPdfUrl: ticketPdf,
+      billingDetails: fullBilling,
+    };
+
+    await saleOrdersService.save(updatedOrder);
+
     setSaleOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId
-          ? {
-              ...o,
-              status: 'Facturado' as const, // [A07] Estado Facturado
-              ticketPdfUrl: ticketPdf,
-              billingDetails: fullBilling,
-            }
-          : o
-      )
+      prev.map((o) => (o.id === orderId ? updatedOrder : o))
     );
 
     return { success: true, message: `Pedido #${target.orderNumber} facturado exitosamente. Ticket ${ticketNum} emitido.`, ticketNumber: ticketNum };
   };
 
-  const cancelSaleOrder = (orderId: string, reason?: string) => {
+  const cancelSaleOrder = async (orderId: string, reason?: string): Promise<{ success: boolean; message: string }> => {
     const target = saleOrders.find((o) => o.id === orderId);
     if (!target) return { success: false, message: 'Pedido no encontrado.' };
 
     if (target.status === 'Facturado' && userRole !== 'admin') {
       return { success: false, message: 'No se puede anular un pedido que ya ha sido facturado (R08).' };
     }
+
+    await saleOrdersService.updateStatus(orderId, 'Cancelado');
 
     setSaleOrders((prev) =>
       prev.map((o) => (o.id === orderId ? { ...o, status: 'Cancelado' as const, generalNotes: reason ? `[CANCELADO]: ${reason}` : o.generalNotes } : o))
@@ -2337,28 +2487,76 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [branding]);
 
-  const addUser = (newUser: AppUser) => {
-    setUsers((prev) => [newUser, ...(prev || [])]);
+  const addUser = async (newUser: AppUser) => {
+    const saved = await usersService.saveUser(newUser);
+    if (saved) {
+      setUsers((prev) => [saved, ...(prev || []).filter((u) => u.id !== saved.id)]);
+      logAudit('Crear Usuario', 'cliente', saved.id, saved.name);
+      return { success: true, user: saved };
+    }
+    return { success: false };
   };
 
-  const updateUser = (updatedUser: AppUser) => {
-    setUsers((prev) => (prev || []).map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+  const updateUser = async (updatedUser: AppUser) => {
+    const saved = await usersService.saveUser(updatedUser);
+    if (saved) {
+      setUsers((prev) => (prev || []).map((u) => (u.id === saved.id ? saved : u)));
+      logAudit('Actualizar Usuario', 'cliente', saved.id, saved.name);
+      return { success: true, user: saved };
+    }
+    return { success: false };
   };
 
-  const deleteUser = (userId: string) => {
-    setUsers((prev) => (prev || []).filter((u) => u.id !== userId));
+  const deleteUser = async (userId: string) => {
+    const success = await usersService.deleteUser(userId);
+    if (success) {
+      setUsers((prev) => (prev || []).filter((u) => u.id !== userId));
+      logAudit('Eliminar Usuario', 'cliente', userId);
+    }
   };
 
-  const addProvider = (newProvider: Provider) => {
-    setProviders((prev) => [newProvider, ...(prev || [])]);
+  const addProvider = async (newProvider: Provider) => {
+    const saved = await providersService.save(newProvider);
+    if (saved) {
+      setProviders((prev) => [saved, ...(prev || [])]);
+    }
   };
 
-  const updateProvider = (updatedProvider: Provider) => {
-    setProviders((prev) => (prev || []).map((p) => (p.id === updatedProvider.id ? updatedProvider : p)));
+  const updateProvider = async (updatedProvider: Provider) => {
+    const saved = await providersService.save(updatedProvider);
+    if (saved) {
+      setProviders((prev) => (prev || []).map((p) => (p.id === saved.id ? saved : p)));
+    }
   };
 
-  const deleteProvider = (providerId: string) => {
-    setProviders((prev) => (prev || []).filter((p) => p.id !== providerId));
+  const deleteProvider = async (providerId: string) => {
+    const success = await providersService.delete(providerId);
+    if (success) {
+      setProviders((prev) => (prev || []).filter((p) => p.id !== providerId));
+    }
+  };
+
+  const addOrUpdateClient = async (client: Client) => {
+    const saved = await clientsService.save(client);
+    if (saved) {
+      setClients((prev) => {
+        const idx = prev.findIndex((c) => c.id === client.id || c.id === saved.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = saved;
+          return copy;
+        }
+        return [saved, ...prev];
+      });
+      logAudit('Guardar Cliente', 'cliente', saved.id, saved.name);
+    }
+  };
+
+  const deleteClient = async (clientId: string) => {
+    const success = await clientsService.delete(clientId);
+    if (success) {
+      setClients((prev) => prev.filter((c) => c.id !== clientId));
+    }
   };
 
   const updateUserCustomPermissions = (userId: string, perms: Partial<UserPermissions>) => {
@@ -2436,17 +2634,32 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [providers, items, providerItems, orders, stockCounts, receptionHours, priceHistory, expenses, auditLogs]);
 
   // Log audit helper
-  const logAudit = (action: string, entityType: AuditLog['entityType'], entityId: string, details?: string) => {
-    const newLog: AuditLog = {
+  const logAudit = async (action: string, entityType: AuditLog['entityType'], entityId: string, details?: string) => {
+    const userId = `usr-${userRole}`;
+    const userName = `Usuario (${userRole.toUpperCase()})`;
+    const timestamp = getLocalDatetimeString();
+
+    const created = await auditLogsService.create({
+      userId,
+      userName,
+      action,
+      entityType,
+      entityId,
+      details,
+      timestamp,
+    });
+
+    const newLog: AuditLog = created || {
       id: 'aud-' + Date.now(),
-      timestamp: getLocalDatetimeString(),
-      userId: `usr-${userRole}`,
-      userName: `Usuario (${userRole.toUpperCase()})`,
+      timestamp,
+      userId,
+      userName,
       action,
       entityType,
       entityId,
       details,
     };
+
     setAuditLogs((prev) => [newLog, ...prev]);
   };
 
@@ -2640,13 +2853,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Create Order
-  const deleteItem = (itemId: string) => {
-    setItems((prevItems) => prevItems.filter(item => item.id !== itemId));
-    setProviderItems((prev) => {
-      const itemToDelete = items.find(i => i.id === itemId);
-      if (!itemToDelete) return prev;
-      return prev.filter(pi => pi.supplierProductCode !== itemToDelete.code);
-    });
+  const deleteItem = async (itemId: string) => {
+    const success = await itemsService.delete(itemId);
+    if (success) {
+      setItems((prevItems) => prevItems.filter((item) => item.id !== itemId));
+      setProviderItems((prev) => prev.filter((pi) => pi.itemId !== itemId));
+    }
   };
 
   const createOrder = (order: Order) => {
@@ -2841,79 +3053,76 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     logAudit('Actualizar Horarios de Recepción', 'proveedor', 'config-global');
   };
 
-  const addOrUpdateProvider = (provider: Provider) => {
-    setProviders((prev) => {
-      const idx = prev.findIndex((p) => p.id === provider.id);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = provider;
-        return copy;
-      }
-      return [...prev, provider];
-    });
-    logAudit('Guardar Proveedor', 'proveedor', provider.id, provider.name);
+  const addOrUpdateProvider = async (provider: Provider) => {
+    const saved = await providersService.save(provider);
+    if (saved) {
+      setProviders((prev) => {
+        const idx = prev.findIndex((p) => p.id === provider.id || p.id === saved.id);
+        if (idx >= 0) {
+          const copy = [...prev];
+          copy[idx] = saved;
+          return copy;
+        }
+        return [saved, ...prev];
+      });
+      logAudit('Guardar Proveedor', 'proveedor', saved.id, saved.name);
+    }
   };
 
-  const addOrUpdateItem = (item: Item, providerRelations?: Partial<ProviderItemRelation>[]) => {
-    const existingItem = items.find((i) => i.id === item.id);
-    if (existingItem && existingItem.currentPrice !== item.currentPrice) {
+  const addOrUpdateItem = async (item: Item, providerRelations?: Partial<ProviderItemRelation>[]) => {
+    const savedItem = await itemsService.save(item);
+    if (!savedItem) return;
+
+    const existingItem = items.find((i) => i.id === item.id || i.id === savedItem.id);
+    if (existingItem && existingItem.currentPrice !== savedItem.currentPrice) {
       const oldPrice = existingItem.currentPrice;
-      const varPct = Number((((item.currentPrice - oldPrice) / oldPrice) * 100).toFixed(2));
+      const varPct = Number((((savedItem.currentPrice - oldPrice) / oldPrice) * 100).toFixed(2));
       const priceEntry: PriceHistoryEntry = {
         id: 'ph-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
-        itemId: item.id,
+        itemId: savedItem.id,
         providerId: 'manual',
         date: getLocalDateString(),
         oldPrice: oldPrice,
-        newPrice: item.currentPrice,
+        newPrice: savedItem.currentPrice,
         variationPercentage: varPct,
         userId: `usr-${userRole}`,
       };
       setPriceHistory((ph) => [priceEntry, ...ph]);
-      logAudit('Actualización de Precio Manual', 'precio', item.id, `${item.name}: de $${oldPrice} a $${item.currentPrice} (${varPct}%)`);
+      logAudit('Actualización de Precio Manual', 'precio', savedItem.id, `${savedItem.name}: de $${oldPrice} a $${savedItem.currentPrice} (${varPct}%)`);
     }
 
     setItems((prev) => {
-      const idx = prev.findIndex((i) => i.id === item.id);
+      const idx = prev.findIndex((i) => i.id === item.id || i.id === savedItem.id);
       if (idx >= 0) {
         const copy = [...prev];
-        copy[idx] = item;
+        copy[idx] = savedItem;
         return copy;
       }
-      return [...prev, item];
+      return [savedItem, ...prev];
     });
 
     if (providerRelations && providerRelations.length > 0) {
-      setProviderItems((prev) => {
-        let updated = [...prev];
-        providerRelations.forEach((rel) => {
-          if (!rel.providerId) return;
-          const existingIdx = updated.findIndex(
-            (r) => r.providerId === rel.providerId && r.itemId === item.id
-          );
-          if (existingIdx >= 0) {
-            updated[existingIdx] = { ...updated[existingIdx], ...rel };
-          } else {
-            updated.push({
-              id: 'pi-' + Date.now() + Math.random().toString(36).substring(2, 4),
-              providerId: rel.providerId,
-              itemId: item.id,
-              supplierProductCode: rel.supplierProductCode || item.code,
-              purchaseUnit: rel.purchaseUnit || item.purchaseUnit,
-              packQuantity: rel.packQuantity || item.packQuantity,
-              minStock: rel.minStock || item.minStock,
-              maxStock: rel.maxStock || item.maxStock,
-              lastPurchasePrice: rel.lastPurchasePrice || item.currentPrice,
-              isPrimarySupplier: rel.isPrimarySupplier ?? true,
-              active: true,
-            });
-          }
+      for (const rel of providerRelations) {
+        if (!rel.providerId) continue;
+        const savedRel = await itemsService.saveProviderRelation({
+          ...rel,
+          itemId: savedItem.id,
         });
-        return updated;
-      });
+        if (savedRel) {
+          setProviderItems((prev) => {
+            const idx = prev.findIndex((r) => r.providerId === savedRel.providerId && r.itemId === savedRel.itemId);
+            if (idx >= 0) {
+              const copy = [...prev];
+              copy[idx] = savedRel;
+              return copy;
+            }
+            return [...prev, savedRel];
+          });
+        }
+      }
     }
 
-    logAudit('Guardar Insumo', 'conteo', item.id, item.name);
+    logAudit('Guardar Insumo', 'conteo', savedItem.id, savedItem.name);
   };
 
   const resetToDefaults = () => {
@@ -3047,14 +3256,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         recordPayment,
         updateReceptionHours,
         addOrUpdateProvider,
+        clients,
+        addOrUpdateClient,
+        deleteClient,
         addOrUpdateItem,
         resetToDefaults,
         itemCategories,
         itemSubcategories,
         itemUnits,
-        setItemCategories,
-        setItemSubcategories,
-        setItemUnits,
+        setItemCategories: saveItemCategories as any,
+        setItemSubcategories: saveItemSubcategories as any,
+        setItemUnits: saveItemUnits as any,
       }}
     >
       {children}

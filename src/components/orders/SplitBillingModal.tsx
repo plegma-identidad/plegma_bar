@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { X, DollarSign, CreditCard, Layers, CheckCircle2, AlertCircle, Plus, Trash2, Split } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { FormField, SelectInput, TextInput } from '../ui/Form';
-import { SaleOrder, SaleOrderItem, SplitPaymentLine } from '../../types';
+import { SaleOrder, SaleOrderItem, SplitPaymentLine, Client } from '../../types';
 
 interface SplitBillingModalProps {
   order: SaleOrder;
+  clients?: Client[];
   onClose: () => void;
   onConfirmBilling: (billingData: {
     paymentCondition: 'Contado' | 'Cuenta Corriente' | 'Invitación' | 'Gift Card' | 'Consumo Empleado';
@@ -27,14 +28,33 @@ const AVAILABLE_PAYMENT_METHODS = [
   { id: 'posnet_debito', name: 'Tarjeta Débito (Posnet)' },
   { id: 'posnet_credito', name: 'Tarjeta Crédito (Posnet)' },
   { id: 'transferencia', name: 'Transferencia Bancaria' },
+  { id: 'cuenta_corriente', name: 'Pago Cuenta Corriente (Fiado)' },
 ];
 
-export const SplitBillingModal: React.FC<SplitBillingModalProps> = ({ order, onClose, onConfirmBilling }) => {
+export const SplitBillingModal: React.FC<SplitBillingModalProps> = ({ order, clients = [], onClose, onConfirmBilling }) => {
   const [billingMode, setBillingMode] = useState<'total' | 'parcial_productos' | 'parcial_monto' | 'multiples_medios'>('total');
   
   // Independent Condition & Method
   const [paymentCondition, setPaymentCondition] = useState<'Contado' | 'Cuenta Corriente' | 'Invitación' | 'Gift Card' | 'Consumo Empleado'>('Contado');
   const [primaryMethodId, setPrimaryMethodId] = useState('efectivo');
+
+  const handleConditionChange = (cond: 'Contado' | 'Cuenta Corriente' | 'Invitación' | 'Gift Card' | 'Consumo Empleado') => {
+    setPaymentCondition(cond);
+    if (cond === 'Cuenta Corriente') {
+      setPrimaryMethodId('cuenta_corriente');
+    } else if (primaryMethodId === 'cuenta_corriente') {
+      setPrimaryMethodId('efectivo');
+    }
+  };
+
+  const handlePrimaryMethodChange = (methodId: string) => {
+    setPrimaryMethodId(methodId);
+    if (methodId === 'cuenta_corriente') {
+      setPaymentCondition('Cuenta Corriente');
+    } else if (paymentCondition === 'Cuenta Corriente') {
+      setPaymentCondition('Contado');
+    }
+  };
 
   // Parcial por Productos selection
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>(order.items.map((i) => i.id));
@@ -120,7 +140,10 @@ export const SplitBillingModal: React.FC<SplitBillingModalProps> = ({ order, onC
       return;
     }
 
-    const primaryMethodName = AVAILABLE_PAYMENT_METHODS.find((m) => m.id === primaryMethodId)?.name || 'Efectivo';
+    const primaryMethodName =
+      paymentCondition === 'Cuenta Corriente'
+        ? 'Cuenta Corriente'
+        : AVAILABLE_PAYMENT_METHODS.find((m) => m.id === primaryMethodId)?.name || 'Efectivo';
 
     onConfirmBilling({
       paymentCondition,
@@ -208,10 +231,10 @@ export const SplitBillingModal: React.FC<SplitBillingModalProps> = ({ order, onC
             <FormField label="Condición Comercial de Pago">
               <SelectInput
                 value={paymentCondition}
-                onChange={(e) => setPaymentCondition(e.target.value as any)}
+                onChange={(e) => handleConditionChange(e.target.value as any)}
                 options={[
                   { value: 'Contado', label: 'Contado (Inmediato)' },
-                  { value: 'Cuenta Corriente', label: 'Cuenta Corriente' },
+                  { value: 'Cuenta Corriente', label: 'Pago Cuenta Corriente (Fiado)' },
                   { value: 'Invitación', label: 'Invitación / Sin Cargo' },
                   { value: 'Gift Card', label: 'Gift Card / Voucher' },
                 ]}
@@ -222,12 +245,22 @@ export const SplitBillingModal: React.FC<SplitBillingModalProps> = ({ order, onC
               <FormField label="Medio de Pago / Cuenta">
                 <SelectInput
                   value={primaryMethodId}
-                  onChange={(e) => setPrimaryMethodId(e.target.value)}
+                  onChange={(e) => handlePrimaryMethodChange(e.target.value)}
                   options={AVAILABLE_PAYMENT_METHODS.map((m) => ({ value: m.id, label: m.name }))}
                 />
               </FormField>
             )}
           </div>
+
+          {paymentCondition === 'Cuenta Corriente' && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <CreditCard className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Cobro imputado a la Cuenta Corriente de: <strong>{order.clientName || 'Consumidor Final'}</strong></span>
+              </div>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] bg-amber-200 text-amber-900 font-black shrink-0">Cobro Diferido</span>
+            </div>
+          )}
 
           {/* Mode 2: Parcial por Productos */}
           {billingMode === 'parcial_productos' && (

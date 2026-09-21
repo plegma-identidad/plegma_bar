@@ -26,7 +26,6 @@ import { StandardDataTable } from './ui/DataTable';
 import { ModuleHelpModal } from './ui/ModuleHelpModal';
 import { useApp } from '../context/AppContext';
 import { Reservation, RestaurantTable } from '../types';
-import { INITIAL_CC_CLIENTS } from '../data/currentAccountData';
 import { ReservationModal } from './reservations/ReservationModal';
 import { ReservationDetailModal } from './reservations/ReservationDetailModal';
 import { ReservationReceiptModal } from './reservations/ReservationReceiptModal';
@@ -53,6 +52,7 @@ export function ReservationsView() {
   const {
     reservations,
     restaurantTables,
+    clients,
     addReservation,
     updateReservation,
     cancelReservation,
@@ -604,7 +604,7 @@ export function ReservationsView() {
         <ReservationModal
           reservationToEdit={editingReservation}
           tables={restaurantTables}
-          clients={INITIAL_CC_CLIENTS}
+          clients={clients}
           onClose={() => setIsModalOpen(false)}
           onSave={handleSaveModal}
           checkOverbooking={checkOverbooking}

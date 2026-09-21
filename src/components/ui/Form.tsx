@@ -181,7 +181,7 @@ export const SelectWithInlineAdd: React.FC<SelectWithInlineAddProps> = ({
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
             <input
               type="text"
               value={newInputValue}
@@ -194,12 +194,12 @@ export const SelectWithInlineAdd: React.FC<SelectWithInlineAddProps> = ({
                   handleSaveInline();
                 }
               }}
-              className="flex-1 px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              className="flex-1 min-w-0 px-2.5 py-1.5 text-xs bg-white border border-amber-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
             <button
               type="button"
               onClick={handleSaveInline}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow flex items-center gap-1"
+              className="shrink-0 px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs rounded-lg shadow flex items-center gap-1"
             >
               <Check className="w-3.5 h-3.5" />
               <span>Guardar</span>

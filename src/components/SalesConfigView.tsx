@@ -117,88 +117,82 @@ export function SalesConfigView() {
   }, [siteConfigs, searchQuery]);
 
   // Handlers for Tables
-  const handleSaveTable = (payload: any) => {
+  const handleSaveTable = async (payload: any) => {
+    let res;
     if (editingTable) {
-      const res = updateTableConfig(payload as RestaurantTableConfig);
-      if (res.success) {
-        showToast(res.message, 'success');
-        setIsTableModalOpen(false);
-      }
-      return res;
+      res = await updateTableConfig(payload as RestaurantTableConfig);
     } else {
-      const res = addTableConfig(payload);
-      if (res.success) {
-        showToast(res.message, 'success');
-        setIsTableModalOpen(false);
-      }
-      return res;
+      res = await addTableConfig(payload);
     }
+    if (res && res.success) {
+      showToast(res.message, 'success');
+      setIsTableModalOpen(false);
+    } else if (res && !res.success) {
+      showToast(res.message, 'error');
+    }
+    return res;
   };
 
-  const handleDeleteTable = (t: RestaurantTableConfig) => {
+  const handleDeleteTable = async (t: RestaurantTableConfig) => {
     if (!confirm(`¿Desea eliminar la mesa "${t.number}"?`)) return;
-    const res = deleteTableConfig(t.id);
-    if (res.success) {
+    const res = await deleteTableConfig(t.id);
+    if (res && res.success) {
       showToast(res.message, 'warning');
-    } else {
+    } else if (res && !res.success) {
       showToast(res.message, 'error');
     }
   };
 
   // Handlers for Sale Types
-  const handleSaveSaleType = (payload: any) => {
+  const handleSaveSaleType = async (payload: any) => {
+    let res;
     if (editingSaleType) {
-      const res = updateSaleTypeConfig(payload as SaleTypeConfig);
-      if (res.success) {
-        showToast(res.message, 'success');
-        setIsSaleTypeModalOpen(false);
-      }
-      return res;
+      res = await updateSaleTypeConfig(payload as SaleTypeConfig);
     } else {
-      const res = addSaleTypeConfig(payload);
-      if (res.success) {
-        showToast(res.message, 'success');
-        setIsSaleTypeModalOpen(false);
-      }
-      return res;
+      res = await addSaleTypeConfig(payload);
     }
+    if (res && res.success) {
+      showToast(res.message, 'success');
+      setIsSaleTypeModalOpen(false);
+    } else if (res && !res.success) {
+      showToast(res.message, 'error');
+    }
+    return res;
   };
 
-  const handleDeleteSaleType = (st: SaleTypeConfig) => {
+  const handleDeleteSaleType = async (st: SaleTypeConfig) => {
     if (!confirm(`¿Desea eliminar el tipo de venta "${st.name}"?`)) return;
-    const res = deleteSaleTypeConfig(st.id);
-    if (res.success) {
+    const res = await deleteSaleTypeConfig(st.id);
+    if (res && res.success) {
       showToast(res.message, 'warning');
-    } else {
+    } else if (res && !res.success) {
       showToast(res.message, 'error');
     }
   };
 
   // Handlers for Sites
-  const handleSaveSite = (payload: any) => {
+  const handleSaveSite = async (payload: any) => {
+    let res;
     if (editingSite) {
-      const res = updateSiteConfig(payload as SiteConfig);
-      if (res.success) {
-        showToast(res.message, 'success');
-        setIsSiteModalOpen(false);
-      }
-      return res;
+      res = await updateSiteConfig(payload as SiteConfig);
     } else {
-      const res = addSiteConfig(payload);
-      if (res.success) {
-        showToast(res.message, 'success');
-        setIsSiteModalOpen(false);
-      }
-      return res;
+      res = await addSiteConfig(payload);
     }
+    if (res && res.success) {
+      showToast(res.message, 'success');
+      setIsSiteModalOpen(false);
+    } else if (res && !res.success) {
+      showToast(res.message, 'error');
+    }
+    return res;
   };
 
-  const handleDeleteSite = (s: SiteConfig) => {
+  const handleDeleteSite = async (s: SiteConfig) => {
     if (!confirm(`¿Desea eliminar el sitio "${s.name}"?`)) return;
-    const res = deleteSiteConfig(s.id);
-    if (res.success) {
+    const res = await deleteSiteConfig(s.id);
+    if (res && res.success) {
       showToast(res.message, 'warning');
-    } else {
+    } else if (res && !res.success) {
       showToast(res.message, 'error');
     }
   };
@@ -243,9 +237,9 @@ export function SalesConfigView() {
       render: (t: RestaurantTableConfig) => (
         <button
           type="button"
-          onClick={() => {
-            const res = toggleTableFree(t.id);
-            showToast(res.message, 'info');
+          onClick={async () => {
+            const res = await toggleTableFree(t.id);
+            if (res) showToast(res.message, 'info');
           }}
           className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border transition ${
             t.isFree
@@ -282,9 +276,9 @@ export function SalesConfigView() {
           {/* Action 3: Toggle Activo/Inactivo */}
           <button
             type="button"
-            onClick={() => {
-              const res = toggleTableStatus(t.id);
-              showToast(res.message, 'info');
+            onClick={async () => {
+              const res = await toggleTableStatus(t.id);
+              if (res) showToast(res.message, 'info');
             }}
             className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
             title="Activar / Desactivar mesa [3]"
@@ -391,9 +385,9 @@ export function SalesConfigView() {
           {/* Action 3: Toggle Activo/Inactivo (A-TV01) */}
           <button
             type="button"
-            onClick={() => {
-              const res = toggleSaleTypeStatus(st.id);
-              showToast(res.message, 'info');
+            onClick={async () => {
+              const res = await toggleSaleTypeStatus(st.id);
+              if (res) showToast(res.message, 'info');
             }}
             className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
             title="Activar / Desactivar canal [3]"
@@ -483,9 +477,9 @@ export function SalesConfigView() {
           {/* Action 3: Toggle Activo/Inactivo */}
           <button
             type="button"
-            onClick={() => {
-              const res = toggleSiteStatus(s.id);
-              showToast(res.message, 'info');
+            onClick={async () => {
+              const res = await toggleSiteStatus(s.id);
+              if (res) showToast(res.message, 'info');
             }}
             className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
             title="Activar / Desactivar sitio [3]"

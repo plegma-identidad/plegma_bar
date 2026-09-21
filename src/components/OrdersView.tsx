@@ -28,7 +28,6 @@ import { StandardDataTable } from './ui/DataTable';
 import { ConfirmModal } from './ui/ConfirmModal';
 import { useApp } from '../context/AppContext';
 import { SaleOrder, OrderStatus, RestaurantTableConfig } from '../types';
-import { INITIAL_CC_CLIENTS } from '../data/currentAccountData';
 import { OrderEditorModal } from './orders/OrderEditorModal';
 import { ComandaModal } from './orders/ComandaModal';
 import { OrderBillingModal } from './orders/OrderBillingModal';
@@ -66,6 +65,7 @@ export function OrdersView() {
     saleOrders,
     saleTypeConfigs,
     tableConfigs,
+    clients,
     cashShifts,
     cashLines,
     employees,
@@ -128,16 +128,16 @@ export function OrdersView() {
   }, [saleOrders]);
 
   // Handlers
-  const handleSaveEditor = (payload: any) => {
+  const handleSaveEditor = async (payload: any) => {
     if (editingOrder) {
-      const res = updateSaleOrder(payload as SaleOrder);
+      const res = await updateSaleOrder(payload as SaleOrder);
       if (res.success) {
         showToast(res.message, 'success');
         setIsEditorOpen(false);
       }
       return res;
     } else {
-      const res = createSaleOrder(payload);
+      const res = await createSaleOrder(payload);
       if (res.success) {
         showToast(res.message, 'success');
         setIsEditorOpen(false);
@@ -146,9 +146,9 @@ export function OrdersView() {
     }
   };
 
-  const handleConfirmSendComanda = () => {
+  const handleConfirmSendComanda = async () => {
     if (!comandaOrder) return;
-    const res = generateComandaPDF(comandaOrder.id);
+    const res = await generateComandaPDF(comandaOrder.id);
     if (res.success) {
       showToast(res.message, 'success');
       setComandaOrder(null);
@@ -157,9 +157,9 @@ export function OrdersView() {
     }
   };
 
-  const handleConfirmBilling = (billingPayload: any) => {
+  const handleConfirmBilling = async (billingPayload: any) => {
     if (!billingOrder) return { success: false, message: 'Pedido no seleccionado.' };
-    const res = processOrderBilling(billingOrder.id, billingPayload);
+    const res = await processOrderBilling(billingOrder.id, billingPayload);
     if (res.success) {
       showToast(res.message, 'success');
       
@@ -181,9 +181,9 @@ export function OrdersView() {
     return res;
   };
 
-  const handleConfirmCancelOrder = (reason: string = '') => {
+  const handleConfirmCancelOrder = async (reason: string = '') => {
     if (!orderToCancel) return;
-    const res = cancelSaleOrder(orderToCancel.id, reason.trim());
+    const res = await cancelSaleOrder(orderToCancel.id, reason.trim());
     if (res.success) {
       showToast(res.message, 'warning');
     } else {
@@ -284,8 +284,8 @@ export function OrdersView() {
           {o.status === 'En Cocina' && (
             <button
               type="button"
-              onClick={() => {
-                const res = updateSaleOrderStatus(o.id, 'Listo');
+              onClick={async () => {
+                const res = await updateSaleOrderStatus(o.id, 'Listo');
                 showToast(res.message, 'success');
               }}
               className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg transition"
@@ -299,8 +299,8 @@ export function OrdersView() {
           {o.status === 'Listo' && (
             <button
               type="button"
-              onClick={() => {
-                const res = updateSaleOrderStatus(o.id, 'Entregado');
+              onClick={async () => {
+                const res = await updateSaleOrderStatus(o.id, 'Entregado');
                 showToast(res.message, 'success');
               }}
               className="p-1 text-blue-600 hover:bg-blue-50 rounded-lg transition"
@@ -656,8 +656,8 @@ export function OrdersView() {
                       variant="secondary"
                       className="w-full"
                       leftIcon={<CheckCircle2 className="w-3.5 h-3.5" />}
-                      onClick={() => {
-                        const res = updateSaleOrderStatus(o.id, 'Listo');
+                      onClick={async () => {
+                        const res = await updateSaleOrderStatus(o.id, 'Listo');
                         showToast(res.message, 'success');
                       }}
                     >
@@ -691,8 +691,8 @@ export function OrdersView() {
                       variant="primary"
                       className="w-full"
                       leftIcon={<Truck className="w-3.5 h-3.5" />}
-                      onClick={() => {
-                        const res = updateSaleOrderStatus(o.id, 'Entregado');
+                      onClick={async () => {
+                        const res = await updateSaleOrderStatus(o.id, 'Entregado');
                         showToast(res.message, 'success');
                       }}
                     >
@@ -743,7 +743,7 @@ export function OrdersView() {
           orderToEdit={editingOrder}
           saleTypes={saleTypeConfigs}
           tables={tableConfigs}
-          clients={INITIAL_CC_CLIENTS}
+          clients={clients}
           onClose={() => setIsEditorOpen(false)}
           onSave={handleSaveEditor}
         />
@@ -760,7 +760,7 @@ export function OrdersView() {
       {billingOrder && (
         <OrderBillingModal
           order={billingOrder}
-          clients={INITIAL_CC_CLIENTS}
+          clients={clients}
           employees={employees}
           activeCashShift={activeShift}
           activeCashLines={cashLines}

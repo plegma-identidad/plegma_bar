@@ -216,7 +216,7 @@ export interface AuditLog {
   userId: string;
   userName: string;
   action: string;
-  entityType: 'conteo' | 'pedido' | 'recepcion' | 'precio' | 'pago' | 'proveedor';
+  entityType: 'conteo' | 'pedido' | 'recepcion' | 'precio' | 'pago' | 'proveedor' | 'cliente' | 'insumo' | 'configuracion';
   entityId: string;
   oldValue?: string;
   newValue?: string;
@@ -678,6 +678,9 @@ export interface CashLine {
   theoreticalAmount: number;     // Inicio + Tickets - Gastos - Retiros [AUTO]
   realAmount?: number;           // Monto Real Cierre (declarado por el cajero)
   difference?: number;           // Real - Teórico [AUTO]
+  differenceNotes?: string;
+  openedByUserId?: string;
+  openedByUserName?: string;
   status: CashLineStatus;        // 'Abierta' | 'Cerrada' | 'Conciliada'
   closedAt?: string;
 }

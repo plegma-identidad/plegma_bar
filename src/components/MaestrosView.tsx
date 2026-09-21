@@ -67,66 +67,13 @@ export const MaestrosView: React.FC<MaestrosViewProps> = ({
     updateRolePermissions,
     branding,
     updateBranding,
+    itemCategories,
+    setItemCategories,
+    clients,
+    addOrUpdateClient,
+    deleteClient,
     hasPermission,
   } = useApp();
-
-  // Master Data State
-  const [clients, setClients] = useState<Client[]>([
-    {
-      id: 'cli-1',
-      code: 'CLI-001',
-      name: 'Salón Principal Las Heras',
-      phone: '011-4555-9988',
-      address: 'Av. Las Heras 2450, CABA',
-      hasCurrentAccount: true,
-      differentiatedBilling: false,
-      isDefault: true,
-      isEmployee: false,
-      geolocation: '',
-      debt: 145000,
-      active: true,
-      notes: 'Cliente preferencial para eventos de salón principal',
-      clientType: 'Salon',
-      cuit: '30-71122334-9',
-      email: 'salon@plegma.com',
-    },
-    {
-      id: 'cli-2',
-      code: 'CLI-002',
-      name: 'Barra Speakeasy Palermo',
-      phone: '011-4777-1122',
-      address: 'Honduras 4890, CABA',
-      hasCurrentAccount: true,
-      differentiatedBilling: true, // Cobro al costo
-      isDefault: false,
-      isEmployee: false,
-      geolocation: '',
-      debt: 68000,
-      active: true,
-      notes: 'Habilitado cobro al costo operativo en insumos de coctelería',
-      clientType: 'Barra',
-      cuit: '30-88776655-4',
-      email: 'barras@plegma.com',
-    },
-    {
-      id: 'cli-3',
-      code: 'CLI-003',
-      name: 'Consumidor Final (Venta Mostrador)',
-      phone: '011-0000-0000',
-      address: 'Venta Directa Local',
-      hasCurrentAccount: false,
-      differentiatedBilling: false,
-      isDefault: false,
-      isEmployee: false,
-      geolocation: '',
-      debt: 0,
-      active: true,
-      notes: 'Cliente genérico por defecto para comprobantes de mostrador',
-      clientType: 'Delivery',
-      cuit: '00-00000000-0',
-      email: 'generico@plegma.com',
-    },
-  ]);
 
   const [currentAccountMovements, setCurrentAccountMovements] = useState<CurrentAccountMovement[]>([
     {
@@ -357,14 +304,8 @@ export const MaestrosView: React.FC<MaestrosViewProps> = ({
 
   const handleAddInlineCategory = (catName: string) => {
     if (!catName.trim()) return;
-    const catToAdd: Category = {
-      id: 'cat-' + Date.now(),
-      name: catName,
-      description: 'Creado desde desplegable',
-      itemCount: 0,
-    };
-    setCategories((prev) => [...prev, catToAdd]);
-    showToast(`Categoría "${catName}" agregada al catálogo.`, 'success');
+    setItemCategories((prev) => [...prev, { id: 'opt-' + Date.now(), name: catName.trim(), active: true }]);
+    showToast(`Rubro "${catName}" agregado correctamente.`, 'success');
   };
 
   // --- CRUD HANDLERS WITH CONFIRMATION & TOAST ---
@@ -454,22 +395,8 @@ export const MaestrosView: React.FC<MaestrosViewProps> = ({
       title: isNew ? 'Confirmar Nuevo Cliente' : 'Guardar Modificaciones de Cliente',
       message: `¿Estás seguro de guardar los datos del cliente "${formattedClient.name}"?`,
       confirmText: isNew ? 'Crear Cliente' : 'Guardar Cambios',
-      onConfirm: () => {
-        setClients((prev) => {
-          let updated = [...prev];
-          
-          // Regla 3.5: No debe permitirse más de un cliente marcado como Por Defecto = Sí
-          if (formattedClient.isDefault) {
-            updated = updated.map((c) => ({ ...c, isDefault: false }));
-          }
-
-          // Removida regla de Cliente Genérico
-          if (isNew) {
-            return [formattedClient, ...updated];
-          } else {
-            return updated.map((c) => (c.id === formattedClient.id ? formattedClient : c));
-          }
-        });
+      onConfirm: async () => {
+        await addOrUpdateClient(formattedClient);
 
         showToast(
           isNew
@@ -488,8 +415,8 @@ export const MaestrosView: React.FC<MaestrosViewProps> = ({
       message: `¿Confirmas eliminar permanentemente al cliente "${clientName}"?`,
       confirmText: 'Eliminar Registro',
       isDanger: true,
-      onConfirm: () => {
-        setClients((prev) => prev.filter((c) => c.id !== clientId));
+      onConfirm: async () => {
+        await deleteClient(clientId);
         showToast(`Cliente "${clientName}" eliminado.`, 'danger');
         setFormModal(null);
       },
@@ -657,7 +584,7 @@ export const MaestrosView: React.FC<MaestrosViewProps> = ({
     const selectedProfile = userProfiles.find((p) => p.id === userData.profileId);
 
     const userToSave: AppUser = {
-      id: userData.dni.trim(),
+      id: isNew ? '' : userData.id || '',
       dni: userData.dni.trim(),
       name: userData.name.trim(),
       email: userData.email.trim(),
@@ -665,8 +592,8 @@ export const MaestrosView: React.FC<MaestrosViewProps> = ({
       address: userData.address || '',
       profileId: userData.profileId || 'p-1',
       profileName: selectedProfile?.name || 'Administrador General',
-      assignedRoleIds: userData.assignedRoleIds || ['r-1'],
-      role: 'admin',
+      assignedRoleIds: userData.assignedRoleIds || [],
+      role: userData.role || 'operador',
       status: userData.status || 'Activo',
       lastAccess: isNew ? 'Recién creado' : userData.lastAccess,
       customPermissions: {
@@ -681,13 +608,21 @@ export const MaestrosView: React.FC<MaestrosViewProps> = ({
       title: isNew ? 'Confirmar Alta de Usuario' : 'Guardar Cambios de Usuario',
       message: `¿Confirmas ${isNew ? 'dar de alta' : 'modificar'} al usuario "${userToSave.name}" (DNI: ${userToSave.dni})?`,
       confirmText: isNew ? 'Dar de Alta' : 'Guardar Cambios',
-      onConfirm: () => {
+      onConfirm: async () => {
         if (isNew) {
-          addUser(userToSave);
-          showToast(`Usuario "${userToSave.name}" registrado con éxito.`, 'success');
+          const res = await addUser(userToSave);
+          if (res && res.success) {
+            showToast(`Usuario "${userToSave.name}" registrado con éxito.`, 'success');
+          } else {
+            showToast(`Error al registrar el usuario. Compruebe si el email o DNI ya existen.`, 'danger');
+          }
         } else {
-          updateUser(userToSave);
-          showToast(`Usuario "${userToSave.name}" actualizado correctamente.`, 'success');
+          const res = await updateUser(userToSave);
+          if (res && res.success) {
+            showToast(`Usuario "${userToSave.name}" actualizado correctamente.`, 'success');
+          } else {
+            showToast(`Error al actualizar el usuario.`, 'danger');
+          }
         }
         setFormModal(null);
       },
@@ -700,8 +635,8 @@ export const MaestrosView: React.FC<MaestrosViewProps> = ({
       message: `¿Confirmas eliminar al usuario "${userName}"? Perderá el acceso al sistema.`,
       confirmText: 'Eliminar Usuario',
       isDanger: true,
-      onConfirm: () => {
-        deleteUser(userId);
+      onConfirm: async () => {
+        await deleteUser(userId);
         showToast(`Usuario "${userName}" eliminado.`, 'danger');
         setFormModal(null);
       },
@@ -3347,10 +3282,7 @@ export const MaestrosView: React.FC<MaestrosViewProps> = ({
                     }
                   >
                     <SelectWithInlineAdd
-                      options={[
-                        ...DEFAULT_RUBROS.map((r) => ({ value: r, label: r })),
-                        ...categories.map((c) => ({ value: c.name, label: c.name })),
-                      ]}
+                      options={itemCategories.filter((c) => c.active).map((c) => ({ value: c.name, label: c.name }))}
                       value={formModal.data.rubro || 'Equipamiento'}
                       onChange={(e) => setFormModal({ ...formModal, data: { ...formModal.data, rubro: e.target.value } })}
                       placeholder="Seleccionar Rubro..."

@@ -23,7 +23,6 @@ import { ModuleHelpModal } from './ui/ModuleHelpModal';
 import { useApp } from '../context/AppContext';
 import { Client, CurrentAccountMovement, Receipt as ReceiptType, EmployeeConsumption } from '../types';
 import {
-  INITIAL_CC_CLIENTS,
   INITIAL_CC_MOVEMENTS,
   INITIAL_RECEIPTS,
   EMPLOYEE_CLIENT_IDS,
@@ -715,9 +714,11 @@ function ClientDetailView({
 // VISTA PRINCIPAL - LISTADO DE CLIENTES
 // -----------------------------------------------
 export function CurrentAccountView() {
-  const { ccMovements, setCcMovements, ccReceipts, setCcReceipts } = useApp();
+  const { clients, ccMovements, setCcMovements, ccReceipts, setCcReceipts } = useApp();
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+
+  const ccClients = useMemo(() => clients.filter((c) => c.hasCurrentAccount), [clients]);
 
   const movements = ccMovements;
   const receipts = ccReceipts;
@@ -733,13 +734,13 @@ export function CurrentAccountView() {
   // Debt Rule: Movements with lineState === 'Pendiente' contribute to Total Debt
   const totalDebt = useMemo(
     () =>
-      INITIAL_CC_CLIENTS.reduce((acc, c) => {
+      ccClients.reduce((acc, c) => {
         const pending = movements
           .filter((m) => m.clientId === c.id && m.lineState === 'Pendiente')
           .reduce((s, m) => s + m.total, 0);
         return acc + pending;
       }, 0),
-    [movements]
+    [ccClients, movements]
   );
 
   const pendingReceipts = receipts.filter((r) => r.status === 'Pendiente').length;
@@ -808,7 +809,7 @@ export function CurrentAccountView() {
       header: 'Es Empleado',
       align: 'center' as const,
       render: (c: Client) =>
-        EMPLOYEE_CLIENT_IDS.includes(c.id) ? (
+        (c.isEmployee || EMPLOYEE_CLIENT_IDS.includes(c.id)) ? (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[10px] font-bold border border-violet-200">
             <UserCheck className="w-3 h-3" /> Sí
           </span>
@@ -844,7 +845,7 @@ export function CurrentAccountView() {
         client={selectedClient}
         movements={movements}
         receipts={receipts}
-        isEmployee={EMPLOYEE_CLIENT_IDS.includes(selectedClient.id)}
+        isEmployee={!!selectedClient.isEmployee || EMPLOYEE_CLIENT_IDS.includes(selectedClient.id)}
         onBack={() => setSelectedClient(null)}
         onDataChange={handleDataChange}
       />
@@ -888,7 +889,7 @@ export function CurrentAccountView() {
         <SummaryCard
           icon={<Users className="w-5 h-5" />}
           label="Clientes CC"
-          value={INITIAL_CC_CLIENTS.length}
+          value={ccClients.length}
           accent="bg-indigo-50 text-indigo-600"
         />
         <SummaryCard
@@ -913,7 +914,7 @@ export function CurrentAccountView() {
 
       {/* Clients Table */}
       <StandardDataTable
-        data={INITIAL_CC_CLIENTS}
+        data={ccClients}
         columns={columns}
         keyExtractor={(c) => c.id}
         onRowClick={(client) => setSelectedClient(client)}

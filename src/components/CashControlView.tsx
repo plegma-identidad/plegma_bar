@@ -124,12 +124,12 @@ export function CashControlView() {
   const totalDifference = activeLines.reduce((acc, l) => acc + (l.difference || 0), 0);
 
   // Handlers
-  const handleOpenShiftConfirm = (
+  const handleOpenShiftConfirm = async (
     shiftType: TurnoType,
     initialLines: { boxType: string; initialAmount: number }[],
     notes?: string
   ) => {
-    const res = openCashShift(shiftType, initialLines, notes);
+    const res = await openCashShift(shiftType, initialLines, notes);
     if (res.success && res.shift) {
       setSelectedShiftId(res.shift.id);
       showToast(res.message, 'success');
@@ -139,9 +139,9 @@ export function CashControlView() {
     }
   };
 
-  const handleAddLineConfirm = (boxType: string, initialAmount: number) => {
+  const handleAddLineConfirm = async (boxType: string, initialAmount: number) => {
     if (!activeShift) return;
-    const res = addCashLine(activeShift.id, boxType, initialAmount);
+    const res = await addCashLine(activeShift.id, boxType, initialAmount);
     if (res.success) {
       showToast(res.message, 'success');
       setIsAddLineOpen(false);
@@ -150,8 +150,8 @@ export function CashControlView() {
     }
   };
 
-  const handleWithdrawalConfirm = (payload: CashWithdrawalPayload) => {
-    const res = withdrawCashToMaster(payload);
+  const handleWithdrawalConfirm = async (payload: CashWithdrawalPayload) => {
+    const res = await withdrawCashToMaster(payload);
     if (res.success) {
       showToast(res.message, 'success');
       setWithdrawalLine(null);
@@ -160,8 +160,8 @@ export function CashControlView() {
     }
   };
 
-  const handleTransferConfirm = (payload: { sourceLineId: string; targetLineId: string; amount: number; notes?: string }) => {
-    const res = transferCashBetweenLines(payload);
+  const handleTransferConfirm = async (payload: { sourceLineId: string; targetLineId: string; amount: number; notes?: string }) => {
+    const res = await transferCashBetweenLines(payload);
     if (res.success) {
       showToast(res.message, 'success');
       setWithdrawalLine(null);
@@ -170,9 +170,9 @@ export function CashControlView() {
     }
   };
 
-  const handleCloseLineConfirm = (realAmount: number, differenceNotes?: string) => {
+  const handleCloseLineConfirm = async (realAmount: number, differenceNotes?: string) => {
     if (!closingLine) return;
-    const res = closeCashLine(closingLine.id, realAmount, differenceNotes);
+    const res = await closeCashLine(closingLine.id, realAmount, differenceNotes);
     if (res.success) {
       showToast(res.message, 'success');
       setClosingLine(null);
@@ -181,9 +181,9 @@ export function CashControlView() {
     }
   };
 
-  const handleCloseShiftAction = () => {
+  const handleCloseShiftAction = async () => {
     if (!activeShift) return;
-    const res = closeCashShift(activeShift.id);
+    const res = await closeCashShift(activeShift.id);
     if (res.success) {
       showToast(res.message, 'success');
     } else {
@@ -191,9 +191,9 @@ export function CashControlView() {
     }
   };
 
-  const handleReconcileShiftAction = () => {
+  const handleReconcileShiftAction = async () => {
     if (!activeShift) return;
-    const res = reconcileCashShift(activeShift.id);
+    const res = await reconcileCashShift(activeShift.id);
     if (res.success) {
       showToast(res.message, 'success');
     } else {
@@ -201,12 +201,12 @@ export function CashControlView() {
     }
   };
 
-  const handleVoidShiftAction = () => {
+  const handleVoidShiftAction = async () => {
     if (!activeShift) return;
     const reason = prompt(`Ingrese el motivo para anular la caja de turno "${activeShift.name}":`);
     if (!reason || !reason.trim()) return;
 
-    const res = voidCashShift(activeShift.id, reason.trim());
+    const res = await voidCashShift(activeShift.id, reason.trim());
     if (res.success) {
       showToast(res.message, 'warning');
     } else {

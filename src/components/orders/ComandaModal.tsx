@@ -7,15 +7,17 @@ import { SaleOrder } from '../../types';
 interface ComandaModalProps {
   order: SaleOrder;
   onClose: () => void;
-  onConfirmSendComanda: () => void;
+  onConfirmSendComanda?: () => void;
 }
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
 
 export const ComandaModal: React.FC<ComandaModalProps> = ({ order, onClose, onConfirmSendComanda }) => {
-  const handlePrint = () => {
-    onConfirmSendComanda();
+  const handlePrint = async () => {
+    if (onConfirmSendComanda) {
+      await onConfirmSendComanda();
+    }
     window.print();
   };
 

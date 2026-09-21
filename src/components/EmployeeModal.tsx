@@ -109,7 +109,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({ employeeToEdit, on
     );
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!dni.trim()) {
@@ -177,7 +177,7 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({ employeeToEdit, on
       schedule,
     };
 
-    addOrUpdateEmployee(empObj);
+    await addOrUpdateEmployee(empObj);
     showToast(employeeToEdit ? 'Empleado actualizado correctamente.' : 'Nuevo empleado creado exitosamente.', 'success');
     onClose();
   };

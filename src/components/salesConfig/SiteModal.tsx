@@ -16,7 +16,7 @@ export const SiteModal: React.FC<SiteModalProps> = ({ siteToEdit, onClose, onSav
   const [orderStr, setOrderStr] = useState(siteToEdit ? String(siteToEdit.order) : '1');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setError('El nombre del sitio / sector es obligatorio (R-S01).');
@@ -36,8 +36,8 @@ export const SiteModal: React.FC<SiteModalProps> = ({ siteToEdit, onClose, onSav
       active: siteToEdit ? siteToEdit.active : true,
     };
 
-    const res = onSave(payload);
-    if (!res.success) {
+    const res = await onSave(payload);
+    if (res && !res.success) {
       setError(res.message);
     }
   };

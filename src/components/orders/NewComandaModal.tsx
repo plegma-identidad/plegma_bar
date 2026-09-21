@@ -3,7 +3,6 @@ import { X, Utensils, MapPin, User, ArrowRight, CheckCircle2, AlertCircle, Shopp
 import { Button } from '../ui/Button';
 import { FormField, SelectInput, TextInput } from '../ui/Form';
 import { SaleTypeConfig, RestaurantTableConfig, Client, SaleOrder } from '../../types';
-import { INITIAL_CC_CLIENTS } from '../../data/currentAccountData';
 
 interface NewComandaModalProps {
   saleTypes?: SaleTypeConfig[];
@@ -24,11 +23,11 @@ interface NewComandaModalProps {
 export const NewComandaModal: React.FC<NewComandaModalProps> = ({
   saleTypes = [],
   tables = [],
-  clients = INITIAL_CC_CLIENTS,
+  clients = [],
   onClose,
   onConfirmCreate,
 }) => {
-  const safeClients = clients && clients.length > 0 ? clients : INITIAL_CC_CLIENTS;
+  const safeClients = clients || [];
   const activeSaleTypes = (saleTypes || []).filter((st) => st && st.active);
   const activeTables = (tables || []).filter((t) => t && t.active);
 

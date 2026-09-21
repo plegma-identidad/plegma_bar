@@ -34,8 +34,6 @@ import { ComandaModal } from './orders/ComandaModal';
 import { NewComandaModal } from './orders/NewComandaModal';
 import { OrderItemCommentModal } from './orders/OrderItemCommentModal';
 
-import { INITIAL_CC_CLIENTS } from '../data/currentAccountData';
-
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
 
@@ -73,6 +71,7 @@ export function ComandasPosView() {
     saleOrders,
     saleTypeConfigs,
     tableConfigs,
+    clients,
     cashShifts,
     createSaleOrder,
     updateSaleOrder,
@@ -158,7 +157,7 @@ export function ComandasPosView() {
   };
 
   // Start New Comanda (Guided 2-step modal trigger)
-  const handleConfirmNewComanda = (payload: {
+  const handleConfirmNewComanda = async (payload: {
     saleTypeId: string;
     saleTypeName: string;
     clientId: string;
@@ -179,7 +178,7 @@ export function ComandasPosView() {
       items: [],
     };
 
-    const res = createSaleOrder(newOrderPayload as any);
+    const res = await createSaleOrder(newOrderPayload as any);
     if (res.success && res.order) {
       setIsNewComandaModalOpen(false);
       setActiveOrder(res.order);
@@ -191,7 +190,7 @@ export function ComandasPosView() {
   };
 
   // Add Item to Active Order
-  const handleSelectProductFromCatalog = (prod: SaleProductCatalogItem) => {
+  const handleSelectProductFromCatalog = async (prod: SaleProductCatalogItem) => {
     if (!activeOrder) return;
 
     if (prod.isConfigurable || prod.requiresSideOption) {
@@ -218,13 +217,13 @@ export function ComandasPosView() {
         totalAmount: updatedTotal,
       };
 
-      updateSaleOrder(updatedOrder);
+      await updateSaleOrder(updatedOrder);
       setActiveOrder(updatedOrder);
     }
   };
 
   // Confirm item from ProductConfiguratorModal
-  const handleConfirmConfiguredItem = (newItem: SaleOrderItem) => {
+  const handleConfirmConfiguredItem = async (newItem: SaleOrderItem) => {
     if (!activeOrder) return;
     const updatedItems = [...activeOrder.items, newItem];
     const updatedTotal = updatedItems.reduce((acc, i) => acc + i.subtotal, 0);
@@ -235,14 +234,14 @@ export function ComandasPosView() {
       totalAmount: updatedTotal,
     };
 
-    updateSaleOrder(updatedOrder);
+    await updateSaleOrder(updatedOrder);
     setActiveOrder(updatedOrder);
     setSelectedCatalogItem(null);
     showToast(`Ítem "${newItem.productName}" agregado`, 'success');
   };
 
   // Update item quantity in active order
-  const handleUpdateItemQuantity = (itemId: string, delta: number) => {
+  const handleUpdateItemQuantity = async (itemId: string, delta: number) => {
     if (!activeOrder) return;
     const updatedItems = activeOrder.items
       .map((item) => {
@@ -259,24 +258,24 @@ export function ComandasPosView() {
     const updatedTotal = updatedItems.reduce((acc, i) => acc + i.subtotal, 0);
     const updatedOrder = { ...activeOrder, items: updatedItems, totalAmount: updatedTotal };
 
-    updateSaleOrder(updatedOrder);
+    await updateSaleOrder(updatedOrder);
     setActiveOrder(updatedOrder);
   };
 
   // Remove line item
-  const handleRemoveItem = (itemId: string) => {
+  const handleRemoveItem = async (itemId: string) => {
     if (!activeOrder) return;
     const updatedItems = activeOrder.items.filter((i) => i.id !== itemId);
     const updatedTotal = updatedItems.reduce((acc, i) => acc + i.subtotal, 0);
     const updatedOrder = { ...activeOrder, items: updatedItems, totalAmount: updatedTotal };
 
-    updateSaleOrder(updatedOrder);
+    await updateSaleOrder(updatedOrder);
     setActiveOrder(updatedOrder);
   };
 
   // Print / Send Comanda to Kitchen
-  const handlePrintComanda = (order: SaleOrder) => {
-    const res = generateComandaPDF(order.id);
+  const handlePrintComanda = async (order: SaleOrder) => {
+    const res = await generateComandaPDF(order.id);
     if (res.success) {
       setComandaOrderPreview(order);
       showToast(res.message, 'success');
@@ -286,9 +285,9 @@ export function ComandasPosView() {
   };
 
   // Confirm billing
-  const handleConfirmBilling = (billingData: any) => {
+  const handleConfirmBilling = async (billingData: any) => {
     if (!billingOrder) return;
-    const res = processOrderBilling(billingOrder.id, {
+    const res = await processOrderBilling(billingOrder.id, {
       clientId: billingOrder.clientId,
       clientName: billingOrder.clientName,
       paymentCondition: billingData.paymentCondition,
@@ -716,7 +715,7 @@ export function ComandasPosView() {
         <NewComandaModal
           saleTypes={saleTypeConfigs}
           tables={tableConfigs}
-          clients={INITIAL_CC_CLIENTS}
+          clients={clients}
           onClose={() => setIsNewComandaModalOpen(false)}
           onConfirmCreate={handleConfirmNewComanda}
         />
@@ -738,6 +737,7 @@ export function ComandasPosView() {
       {billingOrder && (
         <SplitBillingModal
           order={billingOrder}
+          clients={clients}
           onClose={() => setBillingOrder(null)}
           onConfirmBilling={handleConfirmBilling}
         />
@@ -748,6 +748,7 @@ export function ComandasPosView() {
         <ComandaModal
           order={comandaOrderPreview}
           onClose={() => setComandaOrderPreview(null)}
+          onConfirmSendComanda={() => handlePrintComanda(comandaOrderPreview)}
         />
       )}
 
