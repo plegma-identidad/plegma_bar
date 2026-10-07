@@ -101,6 +101,8 @@ export const employeesService = {
           cbuCvu: data.cbu_cvu || undefined,
           alias: data.alias || undefined,
           active: data.active ?? true,
+          schedule: employee.schedule,
+          hourlyRateLogs: employee.hourlyRateLogs,
         };
       } else {
         const { data, error } = await supabase
@@ -134,6 +136,8 @@ export const employeesService = {
           cbuCvu: data.cbu_cvu || undefined,
           alias: data.alias || undefined,
           active: data.active ?? true,
+          schedule: employee.schedule,
+          hourlyRateLogs: employee.hourlyRateLogs,
         };
       }
     } catch (err) {

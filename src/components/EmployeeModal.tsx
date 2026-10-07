@@ -19,6 +19,9 @@ import {
   DollarSign,
   TrendingUp,
   Percent,
+  Plus,
+  Trash2,
+  Sparkles,
 } from 'lucide-react';
 
 interface EmployeeModalProps {
@@ -37,7 +40,7 @@ const ALL_DAYS: EmployeeDayOfWeek[] = [
 ];
 
 export const EmployeeModal: React.FC<EmployeeModalProps> = ({ employeeToEdit, onClose }) => {
-  const { addOrUpdateEmployee, providers, employees, showToast } = useApp();
+  const { addOrUpdateEmployee, providers, employees, showToast, specialHoursPercentage } = useApp();
 
   const [activeTab, setActiveTab] = useState<
     'generales' | 'pago' | 'valor_hora' | 'cronograma' | 'historial'
@@ -78,18 +81,19 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({ employeeToEdit, on
   const [rateAdjustment, setRateAdjustment] = useState<number>(employeeToEdit?.hourlyRate || 5800);
   const [rateChangeNotes, setRateChangeNotes] = useState<string>('');
 
-  // Form State - Cronograma Laboral
+  // Form State - Cronograma Laboral (Multiturno & Hora Especial)
   const [schedule, setSchedule] = useState<WorkScheduleItem[]>(() => {
     if (employeeToEdit?.schedule && employeeToEdit.schedule.length > 0) {
       return employeeToEdit.schedule;
     }
-    return ALL_DAYS.map((day) => ({
-      id: 'sch-' + day,
+    return ALL_DAYS.map((day, idx) => ({
+      id: `sch-${day}-${idx}-${Date.now()}`,
       employeeId: employeeToEdit?.id || '',
       day,
+      shiftName: 'Turno 1',
       startTime: day === 'Sábado' ? '09:00' : '08:00',
       endTime: day === 'Sábado' ? '13:00' : '16:00',
-      specialHourlyRate: day === 'Viernes' ? 6500 : day === 'Sábado' ? 7200 : 5800,
+      isSpecialHours: day === 'Viernes' || day === 'Sábado',
       active: day !== 'Domingo',
     }));
   });
@@ -103,10 +107,30 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({ employeeToEdit, on
     return Number(pct.toFixed(2));
   };
 
-  const handleScheduleChange = (day: EmployeeDayOfWeek, key: keyof WorkScheduleItem, value: any) => {
+  const handleUpdateShift = (id: string, key: keyof WorkScheduleItem, value: any) => {
     setSchedule((prev) =>
-      prev.map((item) => (item.day === day ? { ...item, [key]: value } : item))
+      prev.map((item) => (item.id === id ? { ...item, [key]: value } : item))
     );
+  };
+
+  const handleAddShift = (day: EmployeeDayOfWeek) => {
+    const existingForDay = schedule.filter((s) => s.day === day);
+    const shiftNumber = existingForDay.length + 1;
+    const newShift: WorkScheduleItem = {
+      id: `sch-${day}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      employeeId: employeeToEdit?.id || '',
+      day,
+      shiftName: `Turno ${shiftNumber}`,
+      startTime: shiftNumber === 2 ? '16:00' : '08:00',
+      endTime: shiftNumber === 2 ? '20:00' : '16:00',
+      isSpecialHours: false,
+      active: true,
+    };
+    setSchedule((prev) => [...prev, newShift]);
+  };
+
+  const handleRemoveShift = (id: string) => {
+    setSchedule((prev) => prev.filter((item) => item.id !== id));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -628,74 +652,173 @@ export const EmployeeModal: React.FC<EmployeeModalProps> = ({ employeeToEdit, on
             )}
 
             {/* PESTAÑA 4: CRONOGRAMA LABORAL */}
-            {activeTab === 'cronograma' && (
-              <div className="space-y-6">
-                <h4 className="font-extrabold text-slate-900 text-sm border-b border-slate-100 pb-2">
-                  Cronograma Laboral & Días de Trabajo Habituales
-                </h4>
+            {activeTab === 'cronograma' && (() => {
+              const baseRate = rateAdjustment || hourlyRate || 0;
+              const pct = specialHoursPercentage || 50;
+              const calculatedSpecialRate = Math.round(baseRate * (1 + pct / 100));
 
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse text-xs">
-                      <thead>
-                        <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
-                          <th className="p-3">Día</th>
-                          <th className="p-3 text-center">Hora Inicio</th>
-                          <th className="p-3 text-center">Hora Fin</th>
-                          <th className="p-3 text-center">Valor Hora Especial ($)</th>
-                          <th className="p-3 text-center">Laboral</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {schedule.map((item) => (
-                          <tr key={item.day} className={item.active ? 'bg-white' : 'bg-slate-50/50 opacity-60'}>
-                            <td className="p-3 font-bold text-slate-900">{item.day}</td>
-                            <td className="p-3 text-center">
-                              <input
-                                type="time"
-                                disabled={!item.active}
-                                value={item.startTime}
-                                onChange={(e) => handleScheduleChange(item.day, 'startTime', e.target.value)}
-                                className="px-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold"
-                              />
-                            </td>
-                            <td className="p-3 text-center">
-                              <input
-                                type="time"
-                                disabled={!item.active}
-                                value={item.endTime}
-                                onChange={(e) => handleScheduleChange(item.day, 'endTime', e.target.value)}
-                                className="px-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold"
-                              />
-                            </td>
-                            <td className="p-3 text-center">
-                              <input
-                                type="number"
-                                min="0"
-                                disabled={!item.active}
-                                value={item.specialHourlyRate || 0}
-                                onChange={(e) =>
-                                  handleScheduleChange(item.day, 'specialHourlyRate', Number(e.target.value))
-                                }
-                                className="w-24 px-2 py-1 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold text-center"
-                              />
-                            </td>
-                            <td className="p-3 text-center">
-                              <input
-                                type="checkbox"
-                                checked={item.active}
-                                onChange={(e) => handleScheduleChange(item.day, 'active', e.target.checked)}
-                                className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
-                              />
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              return (
+                <div className="space-y-5">
+                  {/* Banner Informativo */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-slate-900 to-slate-800 text-white p-4 rounded-2xl border border-slate-700 shadow-sm">
+                    <div>
+                      <h4 className="font-extrabold text-sm flex items-center gap-2">
+                        <Clock className="w-4 h-4 text-amber-400" />
+                        <span>Cronograma Laboral (Doble Turno & Hora Especial)</span>
+                      </h4>
+                      <p className="text-[11px] text-slate-300 mt-0.5">
+                        Asigna uno o más turnos por día. Marca <span className="text-amber-300 font-bold">"Aplica Hora Especial"</span> para aplicar un incremento del <span className="font-extrabold text-amber-400">+{pct}%</span>.
+                      </p>
+                    </div>
+                    <div className="bg-slate-800/90 px-3.5 py-1.5 rounded-xl border border-slate-700 text-right shrink-0">
+                      <span className="text-[10px] text-slate-400 uppercase font-bold block">Valor Hora Especial Calculado</span>
+                      <span className="font-mono font-black text-emerald-400 text-xs">
+                        ${calculatedSpecialRate.toLocaleString('es-AR')} / hr
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Días y Turnos */}
+                  <div className="space-y-4">
+                    {ALL_DAYS.map((day) => {
+                      const dayShifts = schedule.filter((s) => s.day === day);
+                      return (
+                        <div key={day} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+                          {/* Cabecera del Día */}
+                          <div className="bg-slate-100/80 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <span className="font-black text-slate-900 text-xs uppercase tracking-wider">{day}</span>
+                              {dayShifts.length > 1 && (
+                                <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 text-[10px] font-black border border-purple-200">
+                                  {dayShifts.length} TURNOS (DOBLE TURNO)
+                                </span>
+                              )}
+                              {dayShifts.length === 1 && (
+                                <span className="px-2 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[10px] font-bold">
+                                  1 Turno
+                                </span>
+                              )}
+                              {dayShifts.length === 0 && (
+                                <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
+                                  Sin Turnos (Franco)
+                                </span>
+                              )}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleAddShift(day)}
+                              className="flex items-center gap-1 px-3 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-extrabold text-[11px] rounded-xl border border-rose-200 transition shadow-xs"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Agregar Turno</span>
+                            </button>
+                          </div>
+
+                          {/* Lista de Turnos para este día */}
+                          {dayShifts.length === 0 ? (
+                            <div className="p-4 text-center text-xs text-slate-400 bg-slate-50/30 italic">
+                              No hay turnos configurados para el {day}. Presiona "+ Agregar Turno" para asignarle un horario.
+                            </div>
+                          ) : (
+                            <div className="divide-y divide-slate-100">
+                              {dayShifts.map((shift, idx) => (
+                                <div
+                                  key={shift.id}
+                                  className={`p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs transition ${
+                                    shift.active ? 'bg-white' : 'bg-slate-50/70 opacity-60'
+                                  }`}
+                                >
+                                  {/* Nombre de Turno */}
+                                  <div className="w-36">
+                                    <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Etiqueta Turno:</label>
+                                    <input
+                                      type="text"
+                                      disabled={!shift.active}
+                                      value={shift.shiftName || `Turno ${idx + 1}`}
+                                      onChange={(e) => handleUpdateShift(shift.id, 'shiftName', e.target.value)}
+                                      placeholder="Ej. Turno Mañana"
+                                      className="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800 text-xs focus:bg-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                                    />
+                                  </div>
+
+                                  {/* Rango de Horas */}
+                                  <div className="flex items-center gap-2">
+                                    <div>
+                                      <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Hora Inicio:</label>
+                                      <input
+                                        type="time"
+                                        disabled={!shift.active}
+                                        value={shift.startTime}
+                                        onChange={(e) => handleUpdateShift(shift.id, 'startTime', e.target.value)}
+                                        className="px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                                      />
+                                    </div>
+                                    <span className="self-end pb-2 font-bold text-slate-400">a</span>
+                                    <div>
+                                      <label className="text-[10px] font-bold text-slate-500 block mb-0.5">Hora Fin:</label>
+                                      <input
+                                        type="time"
+                                        disabled={!shift.active}
+                                        value={shift.endTime}
+                                        onChange={(e) => handleUpdateShift(shift.id, 'endTime', e.target.value)}
+                                        className="px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono font-bold"
+                                      />
+                                    </div>
+                                  </div>
+
+                                  {/* Checkbox Hora Especial */}
+                                  <div className="flex items-center gap-2 bg-amber-50/80 border border-amber-200 px-3 py-2 rounded-xl mt-3 sm:mt-0">
+                                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        disabled={!shift.active}
+                                        checked={shift.isSpecialHours || false}
+                                        onChange={(e) => handleUpdateShift(shift.id, 'isSpecialHours', e.target.checked)}
+                                        className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                                      />
+                                      <span className="font-extrabold text-amber-950 text-xs">Aplica Hora Especial</span>
+                                    </label>
+
+                                    {shift.isSpecialHours && (
+                                      <span className="px-2 py-0.5 rounded-md font-mono font-black text-[10px] bg-amber-200 text-amber-900 border border-amber-300">
+                                        +{pct}% (${calculatedSpecialRate.toLocaleString('es-AR')})
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Switch Habilitado / Eliminar */}
+                                  <div className="flex items-center gap-3">
+                                    <label className="flex items-center gap-1.5 cursor-pointer text-xs font-bold text-slate-700">
+                                      <input
+                                        type="checkbox"
+                                        checked={shift.active}
+                                        onChange={(e) => handleUpdateShift(shift.id, 'active', e.target.checked)}
+                                        className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                                      />
+                                      <span>Activo</span>
+                                    </label>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => handleRemoveShift(shift.id)}
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                      title="Eliminar turno"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* PESTAÑA 5: HISTORIAL PRECIO HORA */}
             {activeTab === 'historial' && (

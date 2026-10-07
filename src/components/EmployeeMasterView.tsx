@@ -4,6 +4,7 @@ import { Employee } from '../types';
 import { EmployeeModal } from './EmployeeModal';
 import { StandardDataTable, Column } from './ui/DataTable';
 import { DEFAULT_POSITIONS } from '../data/initialData';
+import { SpecialHoursConfigModal } from './SpecialHoursConfigModal';
 import {
   Users,
   UserPlus,
@@ -20,10 +21,11 @@ import {
   ShieldCheck,
   CheckCircle2,
   Clock,
+  Percent,
 } from 'lucide-react';
 
 export const EmployeeMasterView: React.FC = () => {
-  const { employees, toggleEmployeeStatus, providers } = useApp();
+  const { employees, toggleEmployeeStatus, providers, specialHoursPercentage } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedPosition, setSelectedPosition] = useState<string>('todos');
@@ -32,6 +34,7 @@ export const EmployeeMasterView: React.FC = () => {
   // Modal State
   const [isEmployeeModalOpen, setIsEmployeeModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [isSpecialHoursModalOpen, setIsSpecialHoursModalOpen] = useState(false);
 
   // Filtered employees
   const filteredEmployees = employees.filter((emp) => {
@@ -60,8 +63,8 @@ export const EmployeeMasterView: React.FC = () => {
   const avgHourlyRate =
     activeCount > 0
       ? Math.round(
-          employees.filter((e) => e.active).reduce((sum, e) => sum + (e.hourlyRate || 0), 0) / activeCount
-        )
+        employees.filter((e) => e.active).reduce((sum, e) => sum + (e.hourlyRate || 0), 0) / activeCount
+      )
       : 0;
   const partnerCount = employees.filter((e) => e.isPartner).length;
 
@@ -161,11 +164,10 @@ export const EmployeeMasterView: React.FC = () => {
       render: (emp) => (
         <div className="flex justify-center">
           <span
-            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
-              emp.enableClockIn
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${emp.enableClockIn
                 ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
                 : 'bg-slate-100 text-slate-500 border-slate-200'
-            }`}
+              }`}
           >
             {emp.enableClockIn ? 'Habilitada' : 'Deshabilitada'}
           </span>
@@ -180,11 +182,10 @@ export const EmployeeMasterView: React.FC = () => {
         <div className="flex justify-center">
           <button
             onClick={() => toggleEmployeeStatus(emp.id)}
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold border transition ${
-              emp.active
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold border transition ${emp.active
                 ? 'bg-emerald-100 text-emerald-800 border-emerald-300 hover:bg-emerald-200'
                 : 'bg-slate-100 text-slate-600 border-slate-300 hover:bg-slate-200'
-            }`}
+              }`}
             title="Haz clic para cambiar estado activo/inactivo"
           >
             <span className={`w-1.5 h-1.5 rounded-full ${emp.active ? 'bg-emerald-600' : 'bg-slate-400'}`} />
@@ -226,13 +227,24 @@ export const EmployeeMasterView: React.FC = () => {
           </p>
         </div>
 
-        <button
-          onClick={handleCreateNew}
-          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-lg transition"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>Registrar Nuevo Empleado</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => setIsSpecialHoursModalOpen(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs rounded-xl shadow-md transition border border-slate-700"
+            title="Configurar el Porcentaje General de Hora Especial"
+          >
+            <Percent className="w-4 h-4 text-amber-400" />
+            <span>Configurar Hora Especial (+{specialHoursPercentage}%)</span>
+          </button>
+
+          <button
+            onClick={handleCreateNew}
+            className="flex items-center justify-center gap-2 px-5 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-extrabold text-xs rounded-xl shadow-lg transition"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Registrar Nuevo Empleado</span>
+          </button>
+        </div>
       </div>
 
       {/* Main KPI Cards */}
@@ -318,6 +330,13 @@ export const EmployeeMasterView: React.FC = () => {
         <EmployeeModal
           employeeToEdit={editingEmployee}
           onClose={() => setIsEmployeeModalOpen(false)}
+        />
+      )}
+
+      {/* Modal Configuración Hora Especial */}
+      {isSpecialHoursModalOpen && (
+        <SpecialHoursConfigModal
+          onClose={() => setIsSpecialHoursModalOpen(false)}
         />
       )}
     </div>

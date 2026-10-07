@@ -264,11 +264,21 @@ CREATE TABLE IF NOT EXISTS public.work_schedules (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     employee_id UUID REFERENCES public.employees(id) ON DELETE CASCADE,
     day TEXT NOT NULL,
+    shift_name TEXT DEFAULT 'Turno 1',
     start_time TEXT NOT NULL,
     end_time TEXT NOT NULL,
+    is_special_hours BOOLEAN DEFAULT false,
     special_hourly_rate NUMERIC,
     active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Configuración Global de Recursos Humanos
+CREATE TABLE IF NOT EXISTS public.hr_config (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    special_hours_percentage NUMERIC DEFAULT 50,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
 );
 
 -- 3.4 Historial de Tarifas Horarias de Empleados

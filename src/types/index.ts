@@ -454,11 +454,17 @@ export interface WorkScheduleItem {
   id: string;
   employeeId: string;
   day: EmployeeDayOfWeek;
+  shiftName?: string; // ej. "Turno 1", "Turno Mañana", "Turno Tarde"
   startTime: string; // e.g. "08:00"
   endTime: string; // e.g. "16:00"
-  specialHourlyRate?: number; // Moneda (Tarifa especial)
+  isSpecialHours?: boolean; // Aplica hora especial (Sí/No)
+  specialHourlyRate?: number; // Obsoleto/Compatibilidad
   active: boolean; // Si / No
   notes?: string;
+}
+
+export interface HRConfig {
+  specialHoursPercentage: number; // Porcentaje de hora especial (ej. 50%)
 }
 
 export interface Employee {

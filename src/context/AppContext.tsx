@@ -181,6 +181,8 @@ interface AppContextType {
   addOrUpdateEmployee: (emp: Employee) => void;
   toggleEmployeeStatus: (employeeId: string) => void;
   addHourlyRateLog: (employeeId: string, newRate: number, notes?: string) => void;
+  specialHoursPercentage: number;
+  updateSpecialHoursPercentage: (percentage: number) => void;
   clockRecords: ClockRecord[];
   clockIn: (dni: string) => { success: boolean; message: string; record?: ClockRecord };
   clockOut: (dni: string) => { success: boolean; message: string; record?: ClockRecord };
@@ -278,14 +280,14 @@ interface AppContextType {
     targetProviderId?: string
   ) => void;
   updateProviderDays: (providerId: string, orderDays: DayOfWeek[], deliveryDays: DayOfWeek[]) => void;
-  
+
   // Stock Counts
   saveStockCount: (count: StockCount) => void;
-  
+
   // Orders
   createOrder: (order: Order) => void;
   updateOrderStatus: (orderId: string, newStatus: ProcessState) => void;
-  
+
   // Reception
   receiveGoods: (
     orderId: string,
@@ -315,7 +317,7 @@ interface AppContextType {
   updateReceptionHours: (config: ReceptionHoursConfig) => void;
   addOrUpdateProvider: (provider: Provider) => void;
   addOrUpdateItem: (item: Item, providerRelations?: Partial<ProviderItemRelation>[]) => void;
-  
+
   // Reset
   resetToDefaults: () => void;
 }
@@ -380,7 +382,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       localStorage.removeItem('plegma_cc_receipts');
       localStorage.removeItem('plegma_employee_consumptions');
       localStorage.removeItem('plegma_audit_logs');
-    } catch (e) {}
+    } catch (e) { }
   }, []);
 
   // Carga inicial desde Supabase para Módulos 1, 2, 3, 4, 6, 7, 8, 9 y 10
@@ -593,18 +595,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
   };
 
+  const [specialHoursPercentage, setSpecialHoursPercentage] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('plegma_special_hours_percentage');
+      if (saved) return Number(saved);
+    } catch (e) { }
+    return 50;
+  });
+
+  const updateSpecialHoursPercentage = (percentage: number) => {
+    const val = Math.max(0, Number(percentage) || 0);
+    setSpecialHoursPercentage(val);
+    try {
+      localStorage.setItem('plegma_special_hours_percentage', String(val));
+    } catch (e) { }
+  };
+
   const [clockRecords, setClockRecords] = useState<ClockRecord[]>(() => {
     try {
       const saved = localStorage.getItem('plegma_clock_records');
       if (saved) return JSON.parse(saved);
-    } catch (e) {}
+    } catch (e) { }
     return INITIAL_CLOCK_RECORDS;
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('plegma_clock_records', JSON.stringify(clockRecords));
-    } catch (e) {}
+    } catch (e) { }
   }, [clockRecords]);
 
   const clockIn = (dni: string) => {
@@ -668,7 +686,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     const nowStr = getLocalDatetimeString();
-    
+
     const tIn = new Date(openRecord.checkIn.replace(' ', 'T')).getTime();
     const tOut = new Date(nowStr.replace(' ', 'T')).getTime();
     const diffMs = Math.max(0, tOut - tIn);
@@ -730,12 +748,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       prev.map((r) =>
         r.id === id
           ? {
-              ...r,
-              state: 'Anulada',
-              modifiedBy: 'ADMINISTRADOR',
-              modificationReason: reason,
-              modifiedAt: getLocalDatetimeString(),
-            }
+            ...r,
+            state: 'Anulada',
+            modifiedBy: 'ADMINISTRADOR',
+            modificationReason: reason,
+            modifiedAt: getLocalDatetimeString(),
+          }
           : r
       )
     );
@@ -753,14 +771,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const saved = localStorage.getItem('plegma_employee_advances');
       if (saved) return JSON.parse(saved);
-    } catch (e) {}
+    } catch (e) { }
     return INITIAL_EMPLOYEE_ADVANCES;
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('plegma_employee_advances', JSON.stringify(employeeAdvances));
-    } catch (e) {}
+    } catch (e) { }
   }, [employeeAdvances]);
 
   const addOrUpdateAdvance = (adv: EmployeeAdvance) => {
@@ -785,14 +803,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const saved = localStorage.getItem('plegma_payruns');
       if (saved) return JSON.parse(saved);
-    } catch (e) {}
+    } catch (e) { }
     return INITIAL_PAYRUNS;
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('plegma_payruns', JSON.stringify(payruns));
-    } catch (e) {}
+    } catch (e) { }
   }, [payruns]);
 
   // Cuentas Corrientes State & Persistence
@@ -1523,28 +1541,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       const saved = localStorage.getItem('plegma_restaurant_tables');
       if (saved) return JSON.parse(saved);
-    } catch (e) {}
+    } catch (e) { }
     return INITIAL_RESTAURANT_TABLES;
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('plegma_restaurant_tables', JSON.stringify(restaurantTables));
-    } catch (e) {}
+    } catch (e) { }
   }, [restaurantTables]);
 
   const [reservations, setReservations] = useState<Reservation[]>(() => {
     try {
       const saved = localStorage.getItem('plegma_reservations');
       if (saved) return JSON.parse(saved);
-    } catch (e) {}
+    } catch (e) { }
     return INITIAL_RESERVATIONS;
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('plegma_reservations', JSON.stringify(reservations));
-    } catch (e) {}
+    } catch (e) { }
   }, [reservations]);
 
   // [A04] Transición a Histórica: cron/effect que cambia 'Confirmada' pasadas a 'Histórica'
@@ -1702,14 +1720,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       prev.map((r) =>
         r.id === reservationId
           ? {
-              ...r,
-              status: 'Cancelada' as const,
-              cancelReason,
-              updatedByUserId: activeUserId,
-              updatedByUserName: userName,
-              updatedAt: nowStr,
-              logs: [logItem, ...(r.logs || [])],
-            }
+            ...r,
+            status: 'Cancelada' as const,
+            cancelReason,
+            updatedByUserId: activeUserId,
+            updatedByUserName: userName,
+            updatedAt: nowStr,
+            logs: [logItem, ...(r.logs || [])],
+          }
           : r
       )
     );
@@ -1739,17 +1757,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       prev.map((r) =>
         r.id === reservationId
           ? {
-              ...r,
-              status: 'Cumplida' as const,
-              fulfilledByUserId: activeUserId,
-              fulfilledByUserName: userName,
-              fulfilledAt: nowStr,
-              fulfilledOkNotes: okNotes?.trim() || undefined,
-              updatedByUserId: activeUserId,
-              updatedByUserName: userName,
-              updatedAt: nowStr,
-              logs: [logItem, ...(r.logs || [])],
-            }
+            ...r,
+            status: 'Cumplida' as const,
+            fulfilledByUserId: activeUserId,
+            fulfilledByUserName: userName,
+            fulfilledAt: nowStr,
+            fulfilledOkNotes: okNotes?.trim() || undefined,
+            updatedByUserId: activeUserId,
+            updatedByUserName: userName,
+            updatedAt: nowStr,
+            logs: [logItem, ...(r.logs || [])],
+          }
           : r
       )
     );
@@ -2043,14 +2061,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           g.id === 'grp-002' ? { ...g, selectionType: 'multiple' } : g
         );
       }
-    } catch (e) {}
+    } catch (e) { }
     return INITIAL_OPTION_GROUPS;
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('plegma_option_groups', JSON.stringify(productOptionGroups));
-    } catch (e) {}
+    } catch (e) { }
   }, [productOptionGroups]);
 
   const addProductOptionGroup = (group: ProductOptionGroup) => {
@@ -2108,7 +2126,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     const saleType = saleTypeConfigs.find((st) => st.id === data.saleTypeId);
-    
+
     // [R03] Requerimiento de Mesa si Tipo de Venta exige mesa
     if (saleType?.requiresTable && (!data.tableId || !data.tableId.trim())) {
       return { success: false, message: `El canal "${saleType.name}" requiere la asignación obligatoria de una mesa (R03).` };
@@ -2192,11 +2210,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       prev.map((o) =>
         o.id === orderId
           ? {
-              ...o,
-              status: newStatus as any,
-              t2ComandaAt: nowStr, // [A05] Timestamp T2
-              comandaPdfUrl: pdfUrl,
-            }
+            ...o,
+            status: newStatus as any,
+            t2ComandaAt: nowStr, // [A05] Timestamp T2
+            comandaPdfUrl: pdfUrl,
+          }
           : o
       )
     );
@@ -2442,7 +2460,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const updated = { ...prev, ...newConfig };
       try {
         localStorage.setItem('plegma_branding_config', JSON.stringify(updated));
-      } catch (e) {}
+      } catch (e) { }
       return updated;
     });
   };
@@ -2453,7 +2471,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (savedBranding) {
         setBranding((prev) => ({ ...prev, ...JSON.parse(savedBranding) }));
       }
-    } catch (e) {}
+    } catch (e) { }
   }, []);
 
   useEffect(() => {
@@ -2950,8 +2968,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const finalStatus: ProcessState = isPaid
           ? 'Pagado'
           : paymentStatus === 'Pendiente de pago'
-          ? 'Pendiente de pago'
-          : 'Entregado / Ingresado';
+            ? 'Pendiente de pago'
+            : 'Entregado / Ingresado';
 
         return {
           ...o,
@@ -3267,6 +3285,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setItemCategories: saveItemCategories as any,
         setItemSubcategories: saveItemSubcategories as any,
         setItemUnits: saveItemUnits as any,
+        specialHoursPercentage,
+        updateSpecialHoursPercentage,
       }}
     >
       {children}
