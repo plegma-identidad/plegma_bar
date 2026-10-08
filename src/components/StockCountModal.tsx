@@ -144,7 +144,7 @@ export const StockCountModal: React.FC<StockCountModalProps> = ({
                 {step === 'counting' ? 'Conteo Físico de Stock' : 'Resumen Post-Conteo & Sugerido'}
               </h3>
               <p className="text-xs text-amber-300 font-medium">
-                Proveedor: {provider.name} ({provider.rubro})
+                Proveedor: {provider?.name} ({provider?.rubro || 'General'})
               </p>
             </div>
           </div>

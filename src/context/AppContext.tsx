@@ -2686,37 +2686,57 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setAuditLogs((prev) => [newLog, ...prev]);
   };
 
-  // State derivation for a provider based on active orders & stock counts
+  // Helper date for start of current Monday 00:00:00
+  const getStartOfCurrentWeek = (): Date => {
+    const now = new Date();
+    const day = now.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day; // 0 is Sunday
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diffToMonday);
+    monday.setHours(0, 0, 0, 0);
+    return monday;
+  };
+
+  // State derivation for a provider based on active orders & stock counts for current week cycle
   const getProviderState = (providerId: string): ProcessState => {
-    // Check if there is an active order for this provider
+    const startOfWeek = getStartOfCurrentWeek();
+
+    // Check active or recent orders for this provider
     const providerOrders = orders.filter((o) => o.providerId === providerId);
     if (providerOrders.length > 0) {
-      // Find the most recent order
       const latestOrder = [...providerOrders].sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
       )[0];
 
+      // If active status (pending delivery, confirmed, or pending payment)
       if (latestOrder.status === 'Pendiente de entrega') return 'Pendiente de entrega';
+      if (latestOrder.status === 'Pedido confirmado') return 'Pedido confirmado';
       if (latestOrder.status === 'Entregado / Ingresado') {
         if (latestOrder.paymentStatus === 'Pendiente de pago' || latestOrder.paymentStatus === 'Pago parcial') {
           return 'Pendiente de pago';
         }
-        if (latestOrder.paymentStatus === 'Pagado') return 'Pagado';
-        return 'Entregado / Ingresado';
       }
-      if (latestOrder.status === 'Pedido confirmado') return 'Pedido confirmado';
-      if (latestOrder.status === 'Pagado') return 'Pagado';
-      if (latestOrder.status === 'Finalizado') return 'Finalizado';
+
+      // If completed status (Pagado / Finalizado), only show as completed if created within the current week cycle
+      const orderDate = new Date(latestOrder.date);
+      if (orderDate >= startOfWeek) {
+        if (latestOrder.status === 'Entregado / Ingresado' && latestOrder.paymentStatus === 'Pagado') return 'Pagado';
+        if (latestOrder.status === 'Pagado') return 'Pagado';
+        if (latestOrder.status === 'Finalizado') return 'Finalizado';
+      }
     }
 
-    // Check count status
+    // Check count status for current week cycle
     const providerCounts = stockCounts.filter((c) => c.providerId === providerId);
     if (providerCounts.length > 0) {
       const latestCount = [...providerCounts].sort(
         (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
       )[0];
 
-      if (latestCount.status === 'finalizado') return 'Conteo finalizado';
+      const countDate = new Date(latestCount.date);
+      if (latestCount.status === 'finalizado' && countDate >= startOfWeek) {
+        return 'Conteo finalizado';
+      }
     }
 
     return 'Pendiente de conteo';
@@ -2793,7 +2813,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       // 2. Reorder priorities within targetDay column independently
       const targetDayProviders = updatedProviders
-        .filter((p) => (p.orderDays ? p.orderDays.includes(targetDay) : true))
+        .filter((p) => p.orderDays && p.orderDays.includes(targetDay))
         .sort((a, b) => getPriority(a, targetDay) - getPriority(b, targetDay));
 
       const draggedIdx = targetDayProviders.findIndex((p) => p.id === draggedProviderId);
@@ -2817,16 +2837,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         dayPriorityMap.set(p.id, idx + 1);
       });
 
-      return updatedProviders.map((p) => {
-        if (dayPriorityMap.has(p.id)) {
+      const finalProviders = updatedProviders.map((p) => {
+        const hasNewPriority = dayPriorityMap.has(p.id);
+        const isDraggedAcross = p.id === draggedProviderId && sourceDay !== targetDay;
+        if (hasNewPriority || isDraggedAcross) {
           const newDayPriorities = {
             ...(p.dayPriorities || {}),
-            [targetDay]: dayPriorityMap.get(p.id)!,
+            ...(hasNewPriority ? { [targetDay]: dayPriorityMap.get(p.id)! } : {}),
           };
-          return { ...p, dayPriorities: newDayPriorities };
+          const updatedProv = { ...p, dayPriorities: newDayPriorities };
+          // Persist to Supabase
+          providersService.save(updatedProv).catch((err) => console.error('Error al guardar prioridades:', err));
+          return updatedProv;
         }
         return p;
       });
+
+      return finalProviders;
     });
 
     logAudit('Drag & Drop Proveedor', 'proveedor', draggedProviderId, `Arrastrar a ${targetDay}`);
@@ -2834,7 +2861,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateProviderDays = (providerId: string, orderDays: DayOfWeek[], deliveryDays: DayOfWeek[]) => {
     setProviders((prev) =>
-      prev.map((p) => (p.id === providerId ? { ...p, orderDays, deliveryDays } : p))
+      prev.map((p) => {
+        if (p.id === providerId) {
+          const updatedProv = { ...p, orderDays, deliveryDays };
+          providersService.save(updatedProv).catch((err) => console.error('Error al guardar días:', err));
+          return updatedProv;
+        }
+        return p;
+      })
     );
     logAudit('Actualizar Días de Pedido/Entrega', 'proveedor', providerId);
   };

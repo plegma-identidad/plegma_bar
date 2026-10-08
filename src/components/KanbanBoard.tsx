@@ -17,6 +17,8 @@ import {
   X,
   HelpCircle,
   Plus,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { ModuleHelpModal } from './ui/ModuleHelpModal';
 
@@ -74,7 +76,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
   // Extract unique rubros for filter matching DEFAULT_RUBROS catalog
   const rubros = Array.from(
-    new Set([...DEFAULT_RUBROS, ...providers.map((p) => p.rubro).filter(Boolean)])
+    new Set([...DEFAULT_RUBROS, ...(providers || []).filter(Boolean).map((p) => p?.rubro).filter(Boolean)])
   ) as string[];
 
   // Helper for status badge colors & text
@@ -173,8 +175,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
 
   // Filter providers function
   const filterProvidersForDay = (day: DayOfWeek) => {
-    return providers
-      .filter((p) => p.active && (p.orderDays ? p.orderDays.includes(day) : true))
+    return (providers || [])
+      .filter((p) => p && p.active && p.orderDays && p.orderDays.includes(day))
       .filter((p) => {
         if (searchQuery) {
           const q = searchQuery.toLowerCase();
@@ -426,21 +428,21 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                         } ${isBeingDragged ? 'opacity-40 border-dashed border-orange-400' : 'opacity-100'}`}
                         onClick={() => onSelectProvider(provider)}
                       >
-                        {/* Top Card Row: Priority Rank, Rubro, Alert & Drag Handle */}
+                        {/* Top Card Row: Priority Rank, Rubro, Alert & Controls Toolbar */}
                         <div>
-                          <div className="flex items-center justify-between gap-1 mb-2">
-                            <div className="flex items-center gap-1.5 overflow-hidden">
+                          <div className="flex items-center justify-between gap-1.5 mb-2 pb-2 border-b border-slate-100">
+                            <div className="flex items-center gap-1.5 min-w-0">
                               {/* Priority Rank Pill */}
                               <span
-                                className="w-5 h-5 rounded-full bg-slate-900 text-white font-black text-[10px] flex items-center justify-center shrink-0 shadow-xs"
-                                title={`Prioridad ${provider.priority || index + 1}`}
+                                className="w-5 h-5 rounded-full bg-slate-900 text-white font-extrabold text-[10px] inline-flex items-center justify-center shrink-0 leading-none shadow-xs"
+                                title={`Posición ${index + 1}`}
                               >
                                 {index + 1}
                               </span>
 
                               {/* Rubro Badge */}
                               <span
-                                className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200 truncate max-w-[85px]"
+                                className="text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded-md border border-slate-200 truncate max-w-[70px] shrink"
                                 title={provider.rubro || 'General'}
                               >
                                 {provider.rubro || 'General'}
@@ -457,26 +459,60 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                               )}
                             </div>
 
-                            {/* Drag Handle Icon (Admin/Compras) */}
+                            {/* Actions Toolbar */}
                             {(userRole === 'admin' || userRole === 'compras') && (
-                              <div className="flex items-center gap-0.5">
-                                <div
-                                  className="p-1 rounded text-rose-400 hover:text-rose-600 hover:bg-rose-50 cursor-pointer transition shrink-0"
+                              <div
+                                className="flex items-center gap-0.5 bg-slate-50 border border-slate-200/90 rounded-lg p-0.5 shrink-0 shadow-2xs"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  type="button"
+                                  disabled={index === 0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const prevProvider = dayProviders[index - 1];
+                                    if (prevProvider) {
+                                      moveProviderToPosition(provider.id, day, day, prevProvider.id);
+                                    }
+                                  }}
+                                  className="w-6 h-6 flex items-center justify-center rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition disabled:opacity-20 shrink-0"
+                                  title="Subir posición"
+                                >
+                                  <ChevronUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={index === dayProviders.length - 1}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const nextProvider = dayProviders[index + 1];
+                                    if (nextProvider) {
+                                      moveProviderToPosition(nextProvider.id, day, day, provider.id);
+                                    }
+                                  }}
+                                  className="w-6 h-6 flex items-center justify-center rounded text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition disabled:opacity-20 shrink-0"
+                                  title="Bajar posición"
+                                >
+                                  <ChevronDown className="w-3.5 h-3.5" />
+                                </button>
+                                <div className="w-px h-3.5 bg-slate-200 mx-0.5" />
+                                <button
+                                  type="button"
+                                  className="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition shrink-0"
                                   title="Quitar de este día"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    const newOrderDays = (provider.orderDays || []).filter(d => d !== day);
+                                    const newOrderDays = (provider.orderDays || []).filter((d) => d !== day);
                                     updateProviderDays(provider.id, newOrderDays, provider.deliveryDays || []);
                                   }}
                                 >
-                                  <X className="w-4 h-4" />
-                                </div>
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
                                 <div
-                                  className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-grab active:cursor-grabbing transition shrink-0"
-                                  title="Mantén presionado para arrastrar y reordenar la tarjeta"
-                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 cursor-grab active:cursor-grabbing transition shrink-0"
+                                  title="Mantén presionado para arrastrar"
                                 >
-                                  <GripVertical className="w-4 h-4" />
+                                  <GripVertical className="w-3.5 h-3.5" />
                                 </div>
                               </div>
                             )}
@@ -601,8 +637,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({
                 onChange={(e) => setProviderToAdd(e.target.value)}
               >
                 <option value="">-- Seleccionar --</option>
-                {providers
-                  .filter(p => p.active && !(p.orderDays || []).includes(addProviderDay))
+                {(providers || [])
+                  .filter(p => p && p.active && !(p.orderDays || []).includes(addProviderDay!))
                   .map(p => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))

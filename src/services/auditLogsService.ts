@@ -12,7 +12,9 @@ export const auditLogsService = {
       .order('timestamp', { ascending: false });
 
     if (error) {
-      console.error('Error fetching audit logs from Supabase:', error);
+      if (error.code !== 'PGRST205') {
+        console.warn('Advertencia al consultar audit_logs en Supabase:', error.message);
+      }
       return [];
     }
 
@@ -53,7 +55,9 @@ export const auditLogsService = {
       .single();
 
     if (error) {
-      console.error('Error creating audit log in Supabase:', error);
+      if (error.code !== 'PGRST205') {
+        console.warn('Advertencia al crear registro de auditoría:', error.message);
+      }
       return null;
     }
 

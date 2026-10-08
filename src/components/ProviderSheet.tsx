@@ -118,7 +118,7 @@ export const ProviderSheet: React.FC<ProviderSheetProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                {provider.rubro} • {provider.commercialName}
+                {provider?.rubro || 'General'} • {provider?.commercialName || ''}
               </p>
             </div>
           </div>
