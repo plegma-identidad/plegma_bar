@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { ClockRecord } from '../types';
-import { X, Edit3, Save, Ban } from 'lucide-react';
+import { X, Edit3, Save, Ban, Trash2 } from 'lucide-react';
 import { ConfirmModal } from './ui/ConfirmModal';
 
 interface ClockCorrectionModalProps {
@@ -18,7 +18,15 @@ type ConfirmState = {
 };
 
 export const ClockCorrectionModal: React.FC<ClockCorrectionModalProps> = ({ record, onClose }) => {
-  const { correctClockRecord, voidClockRecord } = useApp();
+  const { correctClockRecord, voidClockRecord, deleteClockRecord, showToast } = useApp();
+
+  const handleDeleteRecord = () => {
+    if (window.confirm(`¿Estás seguro de que deseas eliminar definitivamente la marcación de ${record.employeeName} (${record.checkIn})?`)) {
+      deleteClockRecord(record.id);
+      showToast('Marcación eliminada correctamente.', 'info');
+      onClose();
+    }
+  };
 
   const formatForInput = (str?: string) => {
     if (!str) return '';
@@ -171,7 +179,7 @@ export const ClockCorrectionModal: React.FC<ClockCorrectionModalProps> = ({ reco
             </div>
 
             {/* Action options */}
-            <div className="pt-2 flex items-center justify-between border-t border-slate-100 mt-4">
+            <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 mt-4">
               <button
                 type="button"
                 onClick={() => setIsVoiding(!isVoiding)}
@@ -183,6 +191,16 @@ export const ClockCorrectionModal: React.FC<ClockCorrectionModalProps> = ({ reco
               >
                 <Ban className="w-3.5 h-3.5" />
                 <span>{isVoiding ? 'Modo Anulación Activo' : 'Anular Marcación'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDeleteRecord}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs bg-slate-100 text-slate-700 hover:bg-rose-600 hover:text-white border border-slate-200 transition"
+                title="Eliminar esta marcación de la aplicación"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Eliminar Definitivamente</span>
               </button>
             </div>
 

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { ClockRecord, ClockState } from '../types';
 import { ClockCorrectionModal } from './ClockCorrectionModal';
+import { ClockConfirmModal } from './ClockConfirmModal';
 import { StandardDataTable, Column } from './ui/DataTable';
 import {
   Clock,
@@ -19,10 +20,12 @@ import {
   DollarSign,
   Calendar,
   Sparkles,
+  UserCheck,
+  Timer,
 } from 'lucide-react';
 
 export const ClockView: React.FC = () => {
-  const { clockRecords, employees, clockIn, clockOut, branding } = useApp();
+  const { clockRecords, employees, clockIn, clockOut, branding, showToast } = useApp();
 
   // Mode: 'empleado' (Terminal Operativa) vs 'admin' (Control)
   const [viewMode, setViewMode] = useState<'empleado' | 'admin'>('empleado');
@@ -32,6 +35,16 @@ export const ClockView: React.FC = () => {
   const [feedbackMessage, setFeedbackMessage] = useState<{
     type: 'success' | 'error' | 'info';
     text: string;
+  } | null>(null);
+
+  // Confirm Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    type: 'in' | 'out';
+    employeeName: string;
+    dni: string;
+    position?: string;
+    checkInTime?: string;
   } | null>(null);
 
   // Filters State - Vista Admin
@@ -48,19 +61,87 @@ export const ClockView: React.FC = () => {
     ? clockRecords.find((r) => r.dni === cleanDni && r.state === 'Abierta')
     : undefined;
 
-  const handleClockIn = () => {
+  // Active open clock records for employees
+  const activeClockRecords = clockRecords.filter((r) => r.state === 'Abierta');
+
+  const handleOpenClockInModal = () => {
     if (!cleanDni) {
       setFeedbackMessage({ type: 'error', text: 'Por favor ingrese su número de DNI.' });
       return;
     }
+    if (!matchedEmployee) {
+      setFeedbackMessage({ type: 'error', text: `No existe ningún empleado registrado con el DNI ${cleanDni}.` });
+      return;
+    }
+    if (openRecordForEmployee) {
+      setFeedbackMessage({
+        type: 'error',
+        text: `El empleado ${matchedEmployee.name} ya posee un ingreso abierto desde las ${openRecordForEmployee.checkIn.substring(11)}. Registre la salida en el panel.`,
+      });
+      return;
+    }
 
-    const result = clockIn(cleanDni);
+    setConfirmModal({
+      isOpen: true,
+      type: 'in',
+      employeeName: matchedEmployee.name,
+      dni: matchedEmployee.dni,
+      position: matchedEmployee.position,
+    });
+  };
+
+  const handleOpenClockOutModal = (record: ClockRecord) => {
+    const emp = employees.find((e) => e.dni === record.dni);
+    setConfirmModal({
+      isOpen: true,
+      type: 'out',
+      employeeName: record.employeeName,
+      dni: record.dni,
+      position: emp?.position,
+      checkInTime: record.checkIn,
+    });
+  };
+
+  const handleConfirmClockIn = () => {
+    if (!confirmModal) return;
+    const result = clockIn(confirmModal.dni);
     if (result.success) {
       setFeedbackMessage({ type: 'success', text: result.message });
+      showToast(result.message, 'success');
       setDniInput('');
-      setTimeout(() => setFeedbackMessage(null), 4000);
+      setTimeout(() => setFeedbackMessage(null), 5000);
     } else {
       setFeedbackMessage({ type: 'error', text: result.message });
+    }
+    setConfirmModal(null);
+  };
+
+  const handleConfirmClockOut = () => {
+    if (!confirmModal) return;
+    const result = clockOut(confirmModal.dni);
+    if (result.success) {
+      setFeedbackMessage({ type: 'success', text: result.message });
+      showToast(result.message, 'success');
+      setDniInput('');
+      setTimeout(() => setFeedbackMessage(null), 5000);
+    } else {
+      setFeedbackMessage({ type: 'error', text: result.message });
+    }
+    setConfirmModal(null);
+  };
+
+  const getElapsedTimeStr = (checkInStr: string) => {
+    try {
+      const tIn = new Date(checkInStr.replace(' ', 'T')).getTime();
+      const now = Date.now();
+      const diffMs = Math.max(0, now - tIn);
+      const totalMins = Math.floor(diffMs / (1000 * 60));
+      const hrs = Math.floor(totalMins / 60);
+      const mins = totalMins % 60;
+      if (hrs > 0) return `${hrs} hs ${mins} min`;
+      return `${mins} min`;
+    } catch (e) {
+      return '0 min';
     }
   };
 
@@ -298,149 +379,210 @@ export const ClockView: React.FC = () => {
 
       {/* VISTA 1: VISTA EMPLEADO (OPERATIVA) */}
       {viewMode === 'empleado' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Clock Terminal Box */}
-          <div className="lg:col-span-2 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
-            <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
-              <div>
-                <h3 className="font-black text-slate-900 text-base">Terminal de Marcación Rápida</h3>
-                <p className="text-xs text-slate-500">
-                  Ingrese su DNI para registrar entrada o salida de su turno.
-                </p>
-              </div>
-              <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-bold text-xs flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                <span>Terminal Online</span>
-              </span>
-            </div>
-
-            {/* DNI Input */}
-            <div className="space-y-4">
-              <div>
-                <label className="font-extrabold text-slate-800 text-xs block mb-1">
-                  Ingrese su DNI <span className="text-rose-600">*</span>:
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={dniInput}
-                    onChange={(e) => {
-                      setDniInput(e.target.value);
-                      setFeedbackMessage(null);
-                    }}
-                    placeholder="Ej.: 42893400"
-                    className="w-full p-4 pl-12 bg-slate-50 border-2 border-slate-200 focus:border-rose-500 rounded-2xl text-lg font-mono font-black text-slate-900 focus:outline-none"
-                  />
-                  <Search className="w-6 h-6 text-slate-400 absolute left-4 top-4" />
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Main Clock Terminal Box */}
+            <div className="lg:col-span-2 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+              <div className="border-b border-slate-100 pb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-slate-900 text-base flex items-center gap-2">
+                    <UserCheck className="w-5 h-5 text-emerald-600" />
+                    <span>Terminal de Marcación Rápida</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Ingrese su DNI para validar su identidad y registrar el ingreso de jornada.
+                  </p>
                 </div>
+                <span className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full font-bold text-xs flex items-center gap-1.5 shrink-0">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Terminal Online</span>
+                </span>
               </div>
 
-              {/* Employee Lookup Result Card */}
-              <div>
-                <label className="font-extrabold text-slate-800 text-xs block mb-1">
-                  Nombre y Apellido [AUTO]:
-                </label>
-                <input
-                  type="text"
-                  readOnly
-                  value={matchedEmployee ? matchedEmployee.name : cleanDni ? 'Empleado no registrado' : ''}
-                  className={`w-full p-3.5 rounded-xl text-sm font-extrabold font-sans border transition ${
-                    matchedEmployee
-                      ? 'bg-emerald-50/50 border-emerald-300 text-emerald-900'
-                      : cleanDni
-                      ? 'bg-rose-50/50 border-rose-300 text-rose-900'
-                      : 'bg-slate-100 border-slate-200 text-slate-400'
-                  }`}
-                />
-              </div>
-
-              {/* Open Record Notice Banner */}
-              {openRecordForEmployee && (
-                <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex items-center gap-3 text-amber-900">
-                  <Clock className="w-6 h-6 text-amber-600 shrink-0" />
-                  <div className="text-xs">
-                    <span className="font-extrabold block">Marcación Abierta Detectada</span>
-                    <span>
-                      Entrada registrada el {openRecordForEmployee.checkIn}. Haga clic en <strong>SALIR</strong> para finalizar.
-                    </span>
+              {/* DNI Input */}
+              <div className="space-y-4">
+                <div>
+                  <label className="font-extrabold text-slate-800 text-xs block mb-1">
+                    Ingrese su DNI <span className="text-rose-600">*</span>:
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={dniInput}
+                      onChange={(e) => {
+                        setDniInput(e.target.value);
+                        setFeedbackMessage(null);
+                      }}
+                      placeholder="Ej.: 42893400"
+                      className="w-full p-4 pl-12 bg-slate-50 border-2 border-slate-200 focus:border-rose-500 rounded-2xl text-lg font-mono font-black text-slate-900 focus:outline-none transition"
+                    />
+                    <Search className="w-6 h-6 text-slate-400 absolute left-4 top-4" />
                   </div>
                 </div>
-              )}
 
-              {/* Action Buttons: ENTRAR vs SALIR */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                <button
-                  type="button"
-                  onClick={handleClockIn}
-                  disabled={Boolean(openRecordForEmployee) || !matchedEmployee}
-                  className={`p-6 rounded-3xl flex flex-col items-center justify-center gap-2 font-black text-base transition shadow-lg ${
-                    Boolean(openRecordForEmployee) || !matchedEmployee
-                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95 shadow-emerald-600/30'
-                  }`}
-                >
-                  <LogIn className="w-8 h-8" />
-                  <span>ENTRAR</span>
-                  <span className="text-xs font-normal opacity-80">Registrar Entrada</span>
-                </button>
+                {/* Employee Lookup Result Card */}
+                {matchedEmployee ? (
+                  <div className="p-4 bg-emerald-50/80 border-2 border-emerald-300 rounded-2xl flex items-center gap-4 animate-in fade-in duration-150">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white font-black text-sm flex items-center justify-center shadow-xs shrink-0">
+                      {matchedEmployee.name.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-black text-emerald-950 text-sm truncate">{matchedEmployee.name}</h4>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-emerald-200 text-emerald-900 border border-emerald-300">
+                          {matchedEmployee.position}
+                        </span>
+                      </div>
+                      <p className="text-xs text-emerald-800 font-mono mt-0.5">DNI: {matchedEmployee.dni}</p>
+                    </div>
+                  </div>
+                ) : cleanDni ? (
+                  <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs font-extrabold text-rose-800 flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>No existe ningún empleado registrado con el DNI {cleanDni}.</span>
+                  </div>
+                ) : null}
 
-                <button
-                  type="button"
-                  onClick={handleClockOut}
-                  disabled={!Boolean(openRecordForEmployee)}
-                  className={`p-6 rounded-3xl flex flex-col items-center justify-center gap-2 font-black text-base transition shadow-lg ${
-                    !Boolean(openRecordForEmployee)
-                      ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
-                      : 'bg-indigo-600 hover:bg-indigo-500 text-white active:scale-95 shadow-indigo-600/30'
-                  }`}
-                >
-                  <LogOut className="w-8 h-8" />
-                  <span>SALIR</span>
-                  <span className="text-xs font-normal opacity-80">Registrar Salida</span>
-                </button>
-              </div>
+                {/* Open Record Notice Banner */}
+                {openRecordForEmployee && (
+                  <div className="p-4 bg-amber-50 border border-amber-300 rounded-2xl flex items-center gap-3 text-amber-900">
+                    <Clock className="w-6 h-6 text-amber-600 shrink-0" />
+                    <div className="text-xs">
+                      <span className="font-extrabold block">Marcación Abierta Detectada</span>
+                      <span>
+                        Ingreso registrado el {openRecordForEmployee.checkIn}. Utilice el botón <strong>"Registrar Salida"</strong> en el panel de ingresos activos.
+                      </span>
+                    </div>
+                  </div>
+                )}
 
-              {/* Feedback Message Alert */}
-              {feedbackMessage && (
-                <div
-                  className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-2 ${
-                    feedbackMessage.type === 'success'
-                      ? 'bg-emerald-100 border-emerald-300 text-emerald-900'
-                      : 'bg-rose-100 border-rose-300 text-rose-900'
-                  }`}
-                >
-                  {feedbackMessage.type === 'success' ? (
-                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                  ) : (
-                    <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-                  )}
-                  <span>{feedbackMessage.text}</span>
+                {/* Action Button: REGISTRAR INGRESO */}
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={handleOpenClockInModal}
+                    disabled={Boolean(openRecordForEmployee) || !matchedEmployee}
+                    className={`w-full p-5 rounded-2xl flex items-center justify-center gap-3 font-black text-base transition shadow-lg ${
+                      Boolean(openRecordForEmployee) || !matchedEmployee
+                        ? 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed shadow-none'
+                        : 'bg-emerald-600 hover:bg-emerald-500 text-white active:scale-95 shadow-emerald-600/30'
+                    }`}
+                  >
+                    <LogIn className="w-6 h-6" />
+                    <span>REGISTRAR INGRESO (SOLICITA OK)</span>
+                  </button>
                 </div>
-              )}
+
+                {/* Feedback Message Alert */}
+                {feedbackMessage && (
+                  <div
+                    className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-2 ${
+                      feedbackMessage.type === 'success'
+                        ? 'bg-emerald-100 border-emerald-300 text-emerald-900'
+                        : 'bg-rose-100 border-rose-300 text-rose-900'
+                    }`}
+                  >
+                    {feedbackMessage.type === 'success' ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+                    )}
+                    <span>{feedbackMessage.text}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Info Card Sidebar */}
+            <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 space-y-4 h-fit">
+              <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
+                <Info className="w-4 h-4 text-rose-600" />
+                <span>Información de la Terminal</span>
+              </h4>
+
+              <ul className="space-y-3 text-xs text-slate-600">
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Requiere confirmación explícita (OK) para validar la entrada por nombre.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>Lista todos los colaboradores trabajando con opción de marcar salida por línea.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                  <span>No muestra importes de tarifas ni valores de costo de jornada en la vista operativa.</span>
+                </li>
+              </ul>
             </div>
           </div>
 
-          {/* Info Card Sidebar */}
-          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200 space-y-4 h-fit">
-            <h4 className="font-extrabold text-slate-900 text-sm flex items-center gap-2">
-              <Info className="w-4 h-4 text-rose-600" />
-              <span>Información de la Terminal</span>
-            </h4>
+          {/* PANEL DE INGRESOS REGISTRADOS ACTIVOS (EN JORNADA) */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="font-black text-slate-900 text-sm flex items-center gap-2">
+                  <Clock className="w-4.5 h-4.5 text-indigo-600" />
+                  <span>Ingresos Registrados Activos</span>
+                </h3>
+                <p className="text-[11px] text-slate-500">Colaboradores actualmente en jornada de trabajo.</p>
+              </div>
+              <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-900 font-extrabold text-xs border border-indigo-200">
+                {activeClockRecords.length} Activos
+              </span>
+            </div>
 
-            <ul className="space-y-3 text-xs text-slate-600">
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>No muestra valores de valor hora ni costos de jornada.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>No permite edición de marcaciones ni alteraciones de horario.</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>Interfaz simplificada y rápida para operación en salón o cocina.</span>
-              </li>
-            </ul>
+            {activeClockRecords.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 space-y-2">
+                <Clock className="w-8 h-8 text-slate-300 mx-auto" />
+                <p className="text-xs font-bold text-slate-500">No hay ingresos activos en este momento.</p>
+                <p className="text-[11px] text-slate-400">Ingrese su DNI arriba para registrar una nueva entrada.</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
+                {activeClockRecords.map((record) => {
+                  const emp = employees.find((e) => e.dni === record.dni);
+                  return (
+                    <div
+                      key={record.id}
+                      className="p-4 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-xs shrink-0">
+                          {record.employeeName.substring(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <h4 className="font-extrabold text-slate-900 text-xs truncate">{record.employeeName}</h4>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-500 font-mono mt-0.5">
+                            <span>DNI: {record.dni}</span>
+                            {emp && <span className="text-slate-400">• {emp.position}</span>}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] font-bold text-slate-600 flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-slate-400" />
+                              Entrada: {record.checkIn.substring(11)} hs
+                            </span>
+                            <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded border border-emerald-200 flex items-center gap-1">
+                              <Timer className="w-3 h-3 text-emerald-600" />
+                              {getElapsedTimeStr(record.checkIn)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleOpenClockOutModal(record)}
+                        className="flex items-center justify-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs rounded-xl shadow-md transition active:scale-95 shrink-0"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        <span>Registrar Salida</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -545,6 +687,21 @@ export const ClockView: React.FC = () => {
         <ClockCorrectionModal
           record={editingRecord}
           onClose={() => setEditingRecord(null)}
+        />
+      )}
+
+      {/* Modal Confirmación de Marcación (Ingreso / Salida) */}
+      {confirmModal && confirmModal.isOpen && (
+        <ClockConfirmModal
+          isOpen={confirmModal.isOpen}
+          type={confirmModal.type}
+          employeeName={confirmModal.employeeName}
+          dni={confirmModal.dni}
+          position={confirmModal.position}
+          checkInTime={confirmModal.checkInTime}
+          currentTimeStr={new Date().toISOString().replace('T', ' ').substring(0, 16)}
+          onConfirm={confirmModal.type === 'in' ? handleConfirmClockIn : handleConfirmClockOut}
+          onClose={() => setConfirmModal(null)}
         />
       )}
     </div>

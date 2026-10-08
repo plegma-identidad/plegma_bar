@@ -188,6 +188,7 @@ interface AppContextType {
   clockOut: (dni: string) => { success: boolean; message: string; record?: ClockRecord };
   correctClockRecord: (id: string, checkIn: string, checkOut: string, reason: string) => void;
   voidClockRecord: (id: string, reason: string) => void;
+  deleteClockRecord: (id: string) => void;
   employeeConsumptions: EmployeeConsumption[];
   addEmployeeConsumptionFromReceipt: (consumption: EmployeeConsumption) => void;
   employeeAdvances: EmployeeAdvance[];
@@ -757,6 +758,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           : r
       )
     );
+  };
+
+  const deleteClockRecord = (id: string) => {
+    setClockRecords((prev) => prev.filter((r) => r.id !== id));
   };
 
   const [employeeConsumptions, setEmployeeConsumptions] = useState<EmployeeConsumption[]>([]);
@@ -3287,6 +3292,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setItemUnits: saveItemUnits as any,
         specialHoursPercentage,
         updateSpecialHoursPercentage,
+        deleteClockRecord,
       }}
     >
       {children}
