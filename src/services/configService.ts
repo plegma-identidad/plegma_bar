@@ -1,7 +1,15 @@
 import { supabase } from '../lib/supabase';
 import { ConfigOption } from '../types';
 
-export type ConfigOptionType = 'category' | 'subcategory' | 'unit' | 'rubro' | 'position' | 'profile';
+export type ConfigOptionType =
+  | 'category'
+  | 'subcategory'
+  | 'unit'
+  | 'rubro'
+  | 'position'
+  | 'profile'
+  | 'sale_category'
+  | 'sale_subcategory';
 
 export const configService = {
   /**

@@ -765,35 +765,80 @@ export const SaleProductsView: React.FC = () => {
 
                   {/* Recursos Adjuntos (PDF / Video) - Solo para Fabricación */}
                   {isDetailFabricacion && (detailProduct.recipeFileUrl || detailProduct.videoUrl) && (
-                    <div className="space-y-2">
-                      <h4 className="font-bold text-slate-800 flex items-center gap-1.5">
+                    <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                      <h4 className="font-bold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
                         <Layers className="w-4 h-4 text-indigo-600" />
-                        Recursos de Preparación y Capacitación
+                        Recursos Multimedia & Documentación
                       </h4>
-                      <div className="flex flex-wrap gap-2">
+
+                      <div className="space-y-3">
                         {detailProduct.recipeFileUrl && (
-                          <a
-                            href={detailProduct.recipeFileUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold border border-slate-200 transition"
-                          >
-                            <FileText className="w-4 h-4 text-indigo-600" />
-                            <span>{detailProduct.recipeFileName || 'Descargar / Ver Ficha Técnica (PDF)'}</span>
-                            <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
-                          </a>
+                          <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between shadow-xs">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shrink-0">
+                                <FileText className="w-4 h-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-800 truncate">
+                                  {detailProduct.recipeFileName || 'Ficha Técnica de Receta (PDF)'}
+                                </p>
+                                <span className="text-[10px] text-slate-400">Almacenado en Supabase Storage</span>
+                              </div>
+                            </div>
+                            <a
+                              href={detailProduct.recipeFileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-xs transition"
+                            >
+                              <span>Abrir Documento</span>
+                              <ArrowUpRight className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
                         )}
+
                         {detailProduct.videoUrl && (
-                          <a
-                            href={detailProduct.videoUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold border border-slate-200 transition"
-                          >
-                            <Video className="w-4 h-4 text-rose-600" />
-                            <span>Ver Video Tutorial de Preparación</span>
-                            <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
-                          </a>
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                              <span className="flex items-center gap-1.5">
+                                <Video className="w-4 h-4 text-rose-600" />
+                                Video Tutorial de Elaboración:
+                              </span>
+                              <a
+                                href={detailProduct.videoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-indigo-600 hover:underline flex items-center gap-1 text-[11px]"
+                              >
+                                Enlace directo <ArrowUpRight className="w-3 h-3" />
+                              </a>
+                            </div>
+
+                            {/* Reproductor de Video Embebido si es archivo directo o Supabase Storage */}
+                            {detailProduct.videoUrl.includes('supabase.co') ||
+                            detailProduct.videoUrl.endsWith('.mp4') ||
+                            detailProduct.videoUrl.endsWith('.webm') ||
+                            detailProduct.videoUrl.endsWith('.mov') ? (
+                              <div className="rounded-xl overflow-hidden bg-black shadow-md border border-slate-800">
+                                <video
+                                  src={detailProduct.videoUrl}
+                                  controls
+                                  className="w-full max-h-64 object-contain"
+                                />
+                              </div>
+                            ) : (
+                              <a
+                                href={detailProduct.videoUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs border border-slate-200 transition"
+                              >
+                                <Video className="w-4 h-4 text-rose-600" />
+                                <span>Ver video en plataforma externa</span>
+                                <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
+                              </a>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>

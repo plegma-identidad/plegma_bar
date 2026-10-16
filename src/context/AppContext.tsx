@@ -64,6 +64,7 @@ import { currentAccountService } from '../services/currentAccountService';
 import { auditLogsService } from '../services/auditLogsService';
 import { saleProductsService } from '../services/saleProductsService';
 import { productionsService } from '../services/productionsService';
+import { storageService } from '../services/storageService';
 import {
   INITIAL_PROVIDERS,
   INITIAL_ITEMS,
@@ -273,7 +274,13 @@ interface AppContextType {
   addOrUpdateProductionProduct: (product: Partial<ProductionProduct>) => Promise<{ success: boolean; message: string; product?: ProductionProduct }>;
   deleteProductionProduct: (productId: string) => Promise<{ success: boolean; message: string }>;
   toggleProductionProductActive: (productId: string) => Promise<{ success: boolean; message: string }>;
-  duplicateProductionProduct: (productId: string) => Promise<{ success: boolean; message: string; product?: ProductionProduct }>;
+  // Categorías y Subcategorías de Carta
+  saleCategories: ConfigOption[];
+  saleSubcategories: ConfigOption[];
+  setSaleCategories: React.Dispatch<React.SetStateAction<ConfigOption[]>>;
+  setSaleSubcategories: React.Dispatch<React.SetStateAction<ConfigOption[]>>;
+  saveSaleCategories: (action: React.SetStateAction<ConfigOption[]>) => Promise<void>;
+  saveSaleSubcategories: (action: React.SetStateAction<ConfigOption[]>) => Promise<void>;
 
   // Cuentas Corrientes State
   ccMovements: CurrentAccountMovement[];
@@ -377,6 +384,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [itemCategories, setItemCategories] = useState<ConfigOption[]>([]);
   const [itemSubcategories, setItemSubcategories] = useState<ConfigOption[]>([]);
   const [itemUnits, setItemUnits] = useState<ConfigOption[]>([]);
+  const [saleCategories, setSaleCategories] = useState<ConfigOption[]>([]);
+  const [saleSubcategories, setSaleSubcategories] = useState<ConfigOption[]>([]);
 
   // Limpiar localStorage legado de opciones de configuración, proveedores, clientes, insumos, empleados, usuarios, comandas, caja, CC y consumos
   useEffect(() => {
@@ -406,10 +415,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const fetchInitialDataFromSupabase = async () => {
       try {
-        const [cats, subcats, units, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts] = await Promise.all([
+        const [cats, subcats, units, saleCats, saleSubc, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts] = await Promise.all([
           configService.getByType('category'),
           configService.getByType('subcategory'),
           configService.getByType('unit'),
+          configService.getByType('sale_category'),
+          configService.getByType('sale_subcategory'),
           providersService.getAll(),
           itemsService.getAll(),
           itemsService.getProviderRelations(),
@@ -431,6 +442,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setItemCategories(cats);
         setItemSubcategories(subcats);
         setItemUnits(units);
+        setSaleCategories(saleCats && saleCats.length > 0 ? saleCats : [
+          { id: 'scat-1', name: 'Hamburguesas', active: true },
+          { id: 'scat-2', name: 'Pizzas', active: true },
+          { id: 'scat-3', name: 'Cafetería', active: true },
+          { id: 'scat-4', name: 'Bebidas', active: true },
+          { id: 'scat-5', name: 'Pastas', active: true },
+          { id: 'scat-6', name: 'Entradas & Minutas', active: true },
+          { id: 'scat-7', name: 'Postres', active: true },
+          { id: 'scat-8', name: 'Combos & Promos', active: true },
+          { id: 'scat-9', name: 'Varios', active: true },
+        ]);
+        setSaleSubcategories(saleSubc && saleSubc.length > 0 ? saleSubc : [
+          { id: 'ssub-1', name: 'Clásicas', active: true },
+          { id: 'ssub-2', name: 'Especiales', active: true },
+          { id: 'ssub-3', name: 'Smash Burgers', active: true },
+          { id: 'ssub-4', name: 'Tradicionales', active: true },
+          { id: 'ssub-5', name: 'Gaseosas', active: true },
+          { id: 'ssub-6', name: 'Cervezas', active: true },
+          { id: 'ssub-7', name: 'Tragos & Coctelería', active: true },
+          { id: 'ssub-8', name: 'Vinos', active: true },
+          { id: 'ssub-9', name: 'General', active: true },
+        ]);
         setProviders(provs);
         setItems(fetchedItems);
         setProviderItems(fetchedRelations);
@@ -552,6 +585,72 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (fresh.length > 0) setItemUnits(fresh);
     } catch (e) {
       console.error('Error al sincronizar unidades con Supabase:', e);
+    }
+  };
+
+  const saveSaleCategories = async (action: React.SetStateAction<ConfigOption[]>) => {
+    const prev = saleCategories;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setSaleCategories(next);
+
+    try {
+      const prevMap = new Map<string, ConfigOption>(prev.map((o) => [o.id, o]));
+      const nextIds = new Set(next.map((o) => o.id));
+
+      for (const p of prev) {
+        if (!nextIds.has(p.id) && !p.id.startsWith('opt-') && !p.id.startsWith('scat-')) {
+          await configService.delete(p.id);
+        }
+      }
+
+      for (const item of next) {
+        if (item.id.startsWith('opt-') || item.id.startsWith('scat-')) {
+          await configService.create('sale_category', item.name, item.active);
+        } else if (prevMap.has(item.id)) {
+          const old = prevMap.get(item.id)!;
+          if (old.name !== item.name || old.active !== item.active) {
+            await configService.update(item.id, { name: item.name, active: item.active });
+          }
+        }
+      }
+
+      const fresh = await configService.getByType('sale_category');
+      if (fresh.length > 0) setSaleCategories(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar categorías de carta con Supabase:', e);
+    }
+  };
+
+  const saveSaleSubcategories = async (action: React.SetStateAction<ConfigOption[]>) => {
+    const prev = saleSubcategories;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setSaleSubcategories(next);
+
+    try {
+      const prevMap = new Map<string, ConfigOption>(prev.map((o) => [o.id, o]));
+      const nextIds = new Set(next.map((o) => o.id));
+
+      for (const p of prev) {
+        if (!nextIds.has(p.id) && !p.id.startsWith('opt-') && !p.id.startsWith('ssub-')) {
+          await configService.delete(p.id);
+        }
+      }
+
+      for (const item of next) {
+        if (item.id.startsWith('opt-') || item.id.startsWith('ssub-')) {
+          await configService.create('sale_subcategory', item.name, item.active);
+        } else if (prevMap.has(item.id)) {
+          const old = prevMap.get(item.id)!;
+          if (old.name !== item.name || old.active !== item.active) {
+            await configService.update(item.id, { name: item.name, active: item.active });
+          }
+        }
+      }
+
+      const fresh = await configService.getByType('sale_subcategory');
+      if (fresh.length > 0) setSaleSubcategories(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar subcategorías de carta con Supabase:', e);
     }
   };
 
@@ -2170,8 +2269,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const deleteSaleProduct = async (productId: string): Promise<{ success: boolean; message: string }> => {
     try {
+      const targetProd = saleProducts.find((p) => p.id === productId);
       const ok = await saleProductsService.delete(productId);
       if (ok) {
+        if (targetProd?.code) {
+          // Eliminar físicamente los archivos de Storage correspondientes a este producto
+          storageService.deleteProductFolder(targetProd.code).catch((err) => {
+            console.warn('Error al limpiar archivos en Storage para producto eliminado:', err);
+          });
+        }
         setSaleProducts((prev) => prev.filter((p) => p.id !== productId));
         showToast('Producto eliminado correctamente.', 'success');
         return { success: true, message: 'Producto eliminado.' };
@@ -3502,6 +3608,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setItemCategories: saveItemCategories as any,
         setItemSubcategories: saveItemSubcategories as any,
         setItemUnits: saveItemUnits as any,
+        saleCategories,
+        saleSubcategories,
+        setSaleCategories: saveSaleCategories as any,
+        setSaleSubcategories: saveSaleSubcategories as any,
+        saveSaleCategories,
+        saveSaleSubcategories,
         specialHoursPercentage,
         updateSpecialHoursPercentage,
         deleteClockRecord,

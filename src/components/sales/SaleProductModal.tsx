@@ -17,7 +17,16 @@ import {
   CheckCircle2,
   Package,
   TrendingUp,
+  Upload,
+  Image,
+  Film,
+  FileUp,
+  Loader2,
+  Settings,
+  ExternalLink,
 } from 'lucide-react';
+import { storageService } from '../../services/storageService';
+import { ConfigManagerModal } from '../ui/ConfigManagerModal';
 
 interface SaleProductModalProps {
   productToEdit?: SaleProduct | null;
@@ -58,15 +67,27 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
     items,
     productionProducts,
     addOrUpdateSaleProduct,
+    saleCategories,
+    saleSubcategories,
+    setSaleCategories,
+    setSaleSubcategories,
     showToast,
   } = useApp();
+
+  // Modal de configuración de Categorías / Subcategorías
+  const [configModalType, setConfigModalType] = useState<'category' | 'subcategory' | null>(null);
+
+  // Estados de progreso de subida a Storage
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingRecipe, setUploadingRecipe] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
 
   // Estados del Formulario
   const [productType, setProductType] = useState<SaleProductType>('FABRICACION');
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [category, setCategory] = useState(CATEGORIES_DEFAULT[0]);
-  const [subcategory, setSubcategory] = useState(SUBCATEGORIES_DEFAULT[CATEGORIES_DEFAULT[0]][0]);
+  const [category, setCategory] = useState('');
+  const [subcategory, setSubcategory] = useState('');
   const [sellingPrice, setSellingPrice] = useState<string>('0');
   const [imageUrl, setImageUrl] = useState('');
   const [recipeFileUrl, setRecipeFileUrl] = useState('');
@@ -111,8 +132,10 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
       setProductType('FABRICACION');
       setCode(`PRD-${Math.floor(100 + Math.random() * 900)}`);
       setName('');
-      setCategory(CATEGORIES_DEFAULT[0]);
-      setSubcategory(SUBCATEGORIES_DEFAULT[CATEGORIES_DEFAULT[0]][0]);
+      const defaultCat = saleCategories.find((c) => c.active)?.name || 'Hamburguesas';
+      const defaultSub = saleSubcategories.find((s) => s.active)?.name || 'General';
+      setCategory(defaultCat);
+      setSubcategory(defaultSub);
       setSellingPrice('0');
       setImageUrl('');
       setRecipeFileUrl('');
@@ -125,17 +148,125 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
     setFormError('');
     setNewComponentId('');
     setNewQuantity('1');
-  }, [isOpen, productToEdit]);
+  }, [isOpen, productToEdit, saleCategories, saleSubcategories]);
 
-  // Actualizar subcategoría cuando cambia categoría
-  const handleCategoryChange = (newCat: string) => {
-    setCategory(newCat);
-    const subcats = SUBCATEGORIES_DEFAULT[newCat];
-    if (subcats && subcats.length > 0) {
-      setSubcategory(subcats[0]);
-    } else {
-      setSubcategory('');
+  // Manejo de Subida de Foto a Storage
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!code.trim()) {
+      showToast('Por favor asigna un Código de Carta antes de subir la foto.', 'warning');
+      return;
     }
+
+    setUploadingImage(true);
+    try {
+      if (imageUrl && storageService.extractPathFromUrl(imageUrl)) {
+        await storageService.deleteProductMedia(imageUrl);
+      }
+
+      const res = await storageService.uploadProductMedia(code.trim(), 'foto', file);
+      if (res) {
+        setImageUrl(res.url);
+        showToast('Foto subida exitosamente a Supabase Storage.', 'success');
+      } else {
+        showToast('Error al subir la foto a Supabase Storage.', 'error');
+      }
+    } catch (err: any) {
+      showToast('Error al subir foto: ' + (err.message || ''), 'error');
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    if (imageUrl && storageService.extractPathFromUrl(imageUrl)) {
+      await storageService.deleteProductMedia(imageUrl);
+    }
+    setImageUrl('');
+    showToast('Foto quitada de Storage.', 'info');
+  };
+
+  // Manejo de Subida de Archivo de Receta a Storage
+  const handleRecipeFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!code.trim()) {
+      showToast('Por favor asigna un Código de Carta antes de subir el archivo.', 'warning');
+      return;
+    }
+
+    setUploadingRecipe(true);
+    try {
+      if (recipeFileUrl && storageService.extractPathFromUrl(recipeFileUrl)) {
+        await storageService.deleteProductMedia(recipeFileUrl);
+      }
+
+      const res = await storageService.uploadProductMedia(code.trim(), 'receta', file);
+      if (res) {
+        setRecipeFileUrl(res.url);
+        setRecipeFileName(res.name);
+        showToast('Archivo de receta subido a Supabase Storage.', 'success');
+      } else {
+        showToast('Error al subir archivo de receta.', 'error');
+      }
+    } catch (err: any) {
+      showToast('Error al subir receta: ' + (err.message || ''), 'error');
+    } finally {
+      setUploadingRecipe(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveRecipeFile = async () => {
+    if (recipeFileUrl && storageService.extractPathFromUrl(recipeFileUrl)) {
+      await storageService.deleteProductMedia(recipeFileUrl);
+    }
+    setRecipeFileUrl('');
+    setRecipeFileName('');
+    showToast('Archivo de receta quitado.', 'info');
+  };
+
+  // Manejo de Subida de Video a Storage
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!code.trim()) {
+      showToast('Por favor asigna un Código de Carta antes de subir el video.', 'warning');
+      return;
+    }
+
+    setUploadingVideo(true);
+    try {
+      if (videoUrl && storageService.extractPathFromUrl(videoUrl)) {
+        await storageService.deleteProductMedia(videoUrl);
+      }
+
+      const res = await storageService.uploadProductMedia(code.trim(), 'video', file);
+      if (res) {
+        setVideoUrl(res.url);
+        showToast('Video subido exitosamente a Supabase Storage.', 'success');
+      } else {
+        showToast('Error al subir el video a Supabase Storage.', 'error');
+      }
+    } catch (err: any) {
+      showToast('Error al subir video: ' + (err.message || ''), 'error');
+    } finally {
+      setUploadingVideo(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveVideo = async () => {
+    if (videoUrl && storageService.extractPathFromUrl(videoUrl)) {
+      await storageService.deleteProductMedia(videoUrl);
+    }
+    setVideoUrl('');
+    showToast('Video quitado.', 'info');
   };
 
   // Costo calculado
@@ -430,33 +561,121 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label="Categoría" required>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Categoría <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setConfigModalType('category')}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 transition"
+                    title="Configurar Categorías de Carta"
+                  >
+                    <Settings className="w-3 h-3" />
+                    <span>Gestionar</span>
+                  </button>
+                </div>
                 <SelectInput
                   value={category}
-                  onChange={(e) => handleCategoryChange(e.target.value)}
-                  options={CATEGORIES_DEFAULT.map((c) => ({ value: c, label: c }))}
+                  onChange={(e) => setCategory(e.target.value)}
+                  options={saleCategories.filter((c) => c.active).map((c) => ({ value: c.name, label: c.name }))}
                 />
-              </FormField>
+              </div>
 
-              <FormField label="Subcategoría">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Subcategoría
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setConfigModalType('subcategory')}
+                    className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 transition"
+                    title="Configurar Subcategorías de Carta"
+                  >
+                    <Settings className="w-3 h-3" />
+                    <span>Gestionar</span>
+                  </button>
+                </div>
                 <SelectInput
                   value={subcategory}
                   onChange={(e) => setSubcategory(e.target.value)}
-                  options={(SUBCATEGORIES_DEFAULT[category] || ['General']).map((s) => ({
-                    value: s,
-                    label: s,
-                  }))}
+                  options={saleSubcategories.filter((s) => s.active).map((s) => ({ value: s.name, label: s.name }))}
                 />
-              </FormField>
+              </div>
             </div>
 
-            <FormField label="URL de Imagen de Portada (Opcional)" hint="Enlace directo a imagen para catálogo y comandas táctiles">
-              <TextInput
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="https://ejemplo.com/fotos/producto.jpg"
-              />
-            </FormField>
+            {/* Subida de Imagen a Storage */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                <span>Foto de Portada del Producto</span>
+                <span className="text-[10px] text-slate-400 font-normal">Ventas/Carta/{code || '[código]'}/foto_...</span>
+              </label>
+
+              {imageUrl ? (
+                <div className="relative group rounded-2xl overflow-hidden border border-slate-200 bg-slate-900/5 aspect-video sm:aspect-21/9 max-h-52 flex items-center justify-center">
+                  <img
+                    src={imageUrl}
+                    alt="Portada del producto"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-slate-900/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                    <label className="cursor-pointer px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-800 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 transition">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Reemplazar Foto</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        onChange={handleImageUpload}
+                        disabled={uploadingImage}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Quitar</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label className={`border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition ${
+                  uploadingImage
+                    ? 'border-indigo-400 bg-indigo-50/40'
+                    : 'border-slate-300 hover:border-indigo-500 hover:bg-slate-50'
+                }`}>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                    disabled={uploadingImage}
+                  />
+                  {uploadingImage ? (
+                    <div className="flex flex-col items-center gap-2 text-indigo-600 py-2">
+                      <Loader2 className="w-7 h-7 animate-spin" />
+                      <span className="text-xs font-bold">Subiendo foto a Supabase Storage...</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-slate-500 text-center py-2">
+                      <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 mb-1">
+                        <Image className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-800">
+                        Selecciona o arrastra una foto para la carta
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        Formatos: JPG, PNG o WebP (Se elimina la anterior automáticamente al editar)
+                      </span>
+                    </div>
+                  )}
+                </label>
+              )}
+            </div>
           </div>
 
           {/* 3. Sección Específica según Tipo */}
@@ -741,31 +960,183 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <FormField label="URL Ficha Técnica / Receta (PDF)" hint="Paso a paso para elaboración en cocina o barra">
-                  <TextInput
-                    value={recipeFileUrl}
-                    onChange={(e) => setRecipeFileUrl(e.target.value)}
-                    placeholder="https://ejemplo.com/fichas/receta.pdf"
-                  />
-                </FormField>
+              {/* Subida de Archivo de Receta a Storage */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Ficha Técnica / Documento de Receta</span>
+                  <span className="text-[10px] text-slate-400 font-normal">PDF, DOC, XLS, imágenes</span>
+                </label>
 
-                <FormField label="Nombre Descriptivo del Archivo" hint="Ej: Ficha_Hamburguesa_v1.pdf">
-                  <TextInput
-                    value={recipeFileName}
-                    onChange={(e) => setRecipeFileName(e.target.value)}
-                    placeholder="Ficha técnica de cocina..."
-                  />
-                </FormField>
+                {recipeFileUrl ? (
+                  <div className="bg-white p-3 rounded-2xl border border-indigo-200 flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shrink-0">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-800 truncate">
+                          {recipeFileName || 'Ficha Técnica de Receta'}
+                        </p>
+                        <a
+                          href={recipeFileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-[11px] text-indigo-600 hover:underline flex items-center gap-1 font-medium"
+                        >
+                          <span>Ver archivo en Supabase Storage</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <label className="cursor-pointer p-1.5 text-slate-600 hover:text-indigo-600 hover:bg-slate-100 rounded-lg transition" title="Reemplazar archivo">
+                        <Upload className="w-4 h-4" />
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg"
+                          className="hidden"
+                          onChange={handleRecipeFileUpload}
+                          disabled={uploadingRecipe}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleRemoveRecipeFile}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                        title="Eliminar archivo de Storage"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label className={`border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer transition ${
+                    uploadingRecipe
+                      ? 'border-indigo-400 bg-indigo-50/30'
+                      : 'border-slate-300 hover:border-indigo-400 hover:bg-slate-50'
+                  }`}>
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg"
+                      className="hidden"
+                      onChange={handleRecipeFileUpload}
+                      disabled={uploadingRecipe}
+                    />
+                    {uploadingRecipe ? (
+                      <div className="flex items-center gap-2 text-indigo-600 py-1">
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <span className="text-xs font-bold">Subiendo archivo a Storage...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-2 text-slate-600 py-1">
+                        <FileUp className="w-5 h-5 text-indigo-600" />
+                        <span className="text-xs font-bold">Subir archivo de receta (PDF / Documento)</span>
+                        <span className="text-[10px] text-slate-400">(Ventas/Carta/{code || '[código]'})</span>
+                      </div>
+                    )}
+                  </label>
+                )}
               </div>
 
-              <FormField label="URL Video de Preparación (YouTube o Vimeo)" hint="Para capacitación del personal de cocina y barra">
-                <TextInput
-                  value={videoUrl}
-                  onChange={(e) => setVideoUrl(e.target.value)}
-                  placeholder="https://www.youtube.com/watch?v=..."
-                />
-              </FormField>
+              {/* Subida de Video a Storage */}
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Video Tutorial de Elaboración</span>
+                  <span className="text-[10px] text-slate-400 font-normal">MP4, WebM, MOV o enlace externo</span>
+                </label>
+
+                {videoUrl ? (
+                  <div className="bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-md">
+                    {/* Si es video reproducible directo (archivo Storage o formato compatible) */}
+                    {videoUrl.includes('supabase.co') || videoUrl.endsWith('.mp4') || videoUrl.endsWith('.webm') || videoUrl.endsWith('.mov') ? (
+                      <video
+                        src={videoUrl}
+                        controls
+                        className="w-full max-h-56 bg-black"
+                      />
+                    ) : (
+                      <div className="p-4 flex items-center justify-between text-white">
+                        <div className="flex items-center gap-2 truncate">
+                          <Film className="w-5 h-5 text-indigo-400 shrink-0" />
+                          <span className="text-xs truncate">{videoUrl}</span>
+                        </div>
+                        <a
+                          href={videoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-indigo-400 hover:underline shrink-0 ml-2 flex items-center gap-1"
+                        >
+                          Abrir <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    )}
+                    <div className="p-2.5 bg-slate-950/80 flex items-center justify-between text-xs border-t border-slate-800">
+                      <span className="text-slate-400 text-[11px] truncate max-w-[200px]">
+                        Video configurado correctamente
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <label className="cursor-pointer text-indigo-400 hover:text-indigo-300 font-bold flex items-center gap-1 text-[11px]">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Reemplazar</span>
+                          <input
+                            type="file"
+                            accept="video/mp4,video/webm,video/quicktime,video/x-msvideo"
+                            className="hidden"
+                            onChange={handleVideoUpload}
+                            disabled={uploadingVideo}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleRemoveVideo}
+                          className="text-rose-400 hover:text-rose-300 font-bold flex items-center gap-1 text-[11px]"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>Quitar</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <label className={`border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer transition ${
+                      uploadingVideo
+                        ? 'border-indigo-400 bg-indigo-50/30'
+                        : 'border-slate-300 hover:border-indigo-400 hover:bg-slate-50'
+                    }`}>
+                      <input
+                        type="file"
+                        accept="video/mp4,video/webm,video/quicktime,video/x-msvideo"
+                        className="hidden"
+                        onChange={handleVideoUpload}
+                        disabled={uploadingVideo}
+                      />
+                      {uploadingVideo ? (
+                        <div className="flex items-center gap-2 text-indigo-600 py-1">
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          <span className="text-xs font-bold">Subiendo video a Supabase Storage...</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-slate-600 py-1">
+                          <Film className="w-5 h-5 text-indigo-600" />
+                          <span className="text-xs font-bold">Subir archivo de video local</span>
+                          <span className="text-[10px] text-slate-400">(Ventas/Carta/{code || '[código]'})</span>
+                        </div>
+                      )}
+                    </label>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 shrink-0">O pegar enlace:</span>
+                      <TextInput
+                        value={videoUrl}
+                        onChange={(e) => setVideoUrl(e.target.value)}
+                        placeholder="https://www.youtube.com/watch?v=... o URL de video"
+                        className="text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           ) : (
             <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs text-slate-500 flex items-center gap-2.5">
@@ -797,6 +1168,22 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
           </Button>
         </div>
       </div>
+
+      {/* Modal de Configuración Dinámica de Categorías / Subcategorías de Carta */}
+      {configModalType && (
+        <ConfigManagerModal
+          title={configModalType === 'category' ? 'Categorías de Carta' : 'Subcategorías de Carta'}
+          options={configModalType === 'category' ? saleCategories : saleSubcategories}
+          onClose={() => setConfigModalType(null)}
+          onUpdate={(newOpts) => {
+            if (configModalType === 'category') {
+              setSaleCategories(newOpts);
+            } else {
+              setSaleSubcategories(newOpts);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };
