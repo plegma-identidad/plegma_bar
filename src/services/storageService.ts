@@ -160,4 +160,60 @@ export const storageService = {
       return false;
     }
   },
+
+  /**
+   * Obtiene los archivos multimedia existentes en Storage para un código de carta
+   */
+  async getProductFiles(productCode: string): Promise<{
+    imageUrl?: string;
+    recipeFileUrl?: string;
+    recipeFileName?: string;
+    videoUrl?: string;
+  }> {
+    if (!productCode) return {};
+    try {
+      const cleanCode = sanitizePathSegment(productCode);
+      const folderPath = `Ventas/Carta/${cleanCode}`;
+      const { data: files, error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .list(folderPath, { limit: 100 });
+
+      if (error || !files || files.length === 0) {
+        return {};
+      }
+
+      let imageUrl: string | undefined;
+      let recipeFileUrl: string | undefined;
+      let recipeFileName: string | undefined;
+      let videoUrl: string | undefined;
+
+      for (const f of files) {
+        if (!f.name || f.name === '.emptyFolderPlaceholder') continue;
+        const filePath = `${folderPath}/${f.name}`;
+        const { data: pubData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+        const url = pubData.publicUrl;
+
+        if (f.name.startsWith('foto_') && !imageUrl) {
+          imageUrl = url;
+        } else if (f.name.startsWith('receta_') && !recipeFileUrl) {
+          recipeFileUrl = url;
+          const rawName = f.name.replace(/^receta_/i, '');
+          const lastUnderscore = rawName.lastIndexOf('_');
+          const extDot = rawName.lastIndexOf('.');
+          if (lastUnderscore !== -1 && extDot !== -1 && extDot > lastUnderscore) {
+            recipeFileName = rawName.substring(0, lastUnderscore) + rawName.substring(extDot);
+          } else {
+            recipeFileName = rawName;
+          }
+        } else if (f.name.startsWith('video_') && !videoUrl) {
+          videoUrl = url;
+        }
+      }
+
+      return { imageUrl, recipeFileUrl, recipeFileName, videoUrl };
+    } catch (err) {
+      console.warn('Error en getProductFiles:', err);
+      return {};
+    }
+  },
 };

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
 import { SaleProduct, SaleProductType } from '../../types';
 import { SaleProductModal } from './SaleProductModal';
+import { storageService } from '../../services/storageService';
 import { Button } from '../ui/Button';
 import { ConfirmModal } from '../ui/ConfirmModal';
 import { ModuleHelpModal } from '../ui/ModuleHelpModal';
@@ -27,7 +28,60 @@ import {
   HelpCircle,
   ArrowUpRight,
   Package,
+  ExternalLink,
+  Film,
+  ChevronDown,
+  ChevronUp,
+  Download,
 } from 'lucide-react';
+
+// Helper para convertir URLs de YouTube o Vimeo a URLs embebibles
+const getEmbedVideoUrl = (url?: string): string | null => {
+  if (!url) return null;
+  try {
+    const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+    if (ytMatch && ytMatch[1]) {
+      return `https://www.youtube.com/embed/${ytMatch[1]}`;
+    }
+    const vimeoMatch = url.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/([^\/]*)\/videos\/|album\/(\d+)\/video\/|)(\d+)(?:$|\/|\?)/);
+    if (vimeoMatch && vimeoMatch[3]) {
+      return `https://player.vimeo.com/video/${vimeoMatch[3]}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const isDirectVideoUrl = (url?: string): boolean => {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.includes('supabase.co') ||
+    lower.endsWith('.mp4') ||
+    lower.endsWith('.webm') ||
+    lower.endsWith('.mov') ||
+    lower.endsWith('.m4v') ||
+    lower.includes('/video_') ||
+    lower.includes('content-type=video')
+  );
+};
+
+const getFileNameFromUrl = (url?: string, defaultName = 'Ficha Técnica de Receta'): string => {
+  if (!url) return defaultName;
+  try {
+    const cleanUrl = url.split('?')[0];
+    const segments = cleanUrl.split('/');
+    const last = segments[segments.length - 1];
+    if (last) {
+      const decoded = decodeURIComponent(last);
+      return decoded.replace(/^[a-z]+_/i, '');
+    }
+    return defaultName;
+  } catch {
+    return defaultName;
+  }
+};
 
 export const SaleProductsView: React.FC = () => {
   const {
@@ -51,6 +105,7 @@ export const SaleProductsView: React.FC = () => {
   const [detailProduct, setDetailProduct] = useState<SaleProduct | null>(null);
   const [productToDelete, setProductToDelete] = useState<SaleProduct | null>(null);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [previewDoc, setPreviewDoc] = useState(false);
 
   // Categorías únicas
   const categories = useMemo(() => {
@@ -112,6 +167,26 @@ export const SaleProductsView: React.FC = () => {
   const handleOpenNew = () => {
     setProductToEdit(null);
     setIsModalOpen(true);
+  };
+
+  const handleOpenDetail = async (product: SaleProduct) => {
+    setPreviewDoc(false);
+
+    // Auto-recuperación: si al producto le falta recipeFileUrl, videoUrl o imageUrl, consultar Storage
+    if (product.code && (!product.recipeFileUrl || !product.videoUrl || !product.imageUrl)) {
+      const files = await storageService.getProductFiles(product.code);
+      const enrichedProduct: SaleProduct = {
+        ...product,
+        recipeFileUrl: product.recipeFileUrl || files.recipeFileUrl,
+        recipeFileName: product.recipeFileName || files.recipeFileName || (files.recipeFileUrl ? getFileNameFromUrl(files.recipeFileUrl) : undefined),
+        videoUrl: product.videoUrl || files.videoUrl,
+        imageUrl: product.imageUrl || files.imageUrl,
+      };
+      setDetailProduct(enrichedProduct);
+      return;
+    }
+
+    setDetailProduct(product);
   };
 
   const handleEdit = (product: SaleProduct) => {
@@ -496,7 +571,7 @@ export const SaleProductsView: React.FC = () => {
                             <span>{(product.recipe?.length || product.recipeComponents?.length || 0)} componentes</span>
                           </span>
                           <button
-                            onClick={() => setDetailProduct(product)}
+                            onClick={() => handleOpenDetail(product)}
                             className="text-[10px] text-indigo-600 hover:text-indigo-800 font-bold underline"
                           >
                             Ver receta
@@ -521,7 +596,7 @@ export const SaleProductsView: React.FC = () => {
                 {/* Footer de Acciones */}
                 <div className="p-3 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-1">
                   <button
-                    onClick={() => setDetailProduct(product)}
+                    onClick={() => handleOpenDetail(product)}
                     className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg transition"
                     title="Ver Ficha Técnica Completa"
                   >
@@ -584,7 +659,7 @@ export const SaleProductsView: React.FC = () => {
                     <tr
                       key={product.id}
                       className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
-                      onClick={() => setDetailProduct(product)}
+                      onClick={() => handleOpenDetail(product)}
                     >
                       <td className="p-3 font-mono font-bold text-amber-600">
                         {product.code}
@@ -705,7 +780,7 @@ export const SaleProductsView: React.FC = () => {
           {(() => {
             const isDetailFabricacion = String(detailProduct.productType || '').toLowerCase().includes('fab');
             return (
-              <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+              <div className="bg-white border border-slate-200 rounded-3xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
                 {/* Header del Modal Detalle */}
                 <div className="p-4 sm:p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
                   <div className="flex items-center gap-3">
@@ -734,7 +809,10 @@ export const SaleProductsView: React.FC = () => {
                   </div>
 
                   <button
-                    onClick={() => setDetailProduct(null)}
+                    onClick={() => {
+                      setPreviewDoc(false);
+                      setDetailProduct(null);
+                    }}
                     className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200 rounded-xl transition"
                   >
                     <X className="w-5 h-5" />
@@ -743,6 +821,30 @@ export const SaleProductsView: React.FC = () => {
 
                 {/* Contenido del Detalle */}
                 <div className="p-5 overflow-y-auto space-y-5 text-xs flex-1">
+                  {/* Portada / Imagen de Presentación del Producto */}
+                  {detailProduct.imageUrl && (
+                    <div className="relative h-44 sm:h-52 w-full bg-slate-900 rounded-2xl overflow-hidden border border-slate-200 shadow-sm shrink-0">
+                      <img
+                        src={detailProduct.imageUrl}
+                        alt={detailProduct.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent flex items-end p-4">
+                        <div className="text-white">
+                          <span className="text-[10px] font-bold uppercase tracking-wider bg-white/20 backdrop-blur-xs px-2.5 py-0.5 rounded-full border border-white/20">
+                            {detailProduct.category} {detailProduct.subcategory ? `› ${detailProduct.subcategory}` : ''}
+                          </span>
+                          <h3 className="text-lg font-black mt-1.5 text-white drop-shadow-sm">
+                            {detailProduct.name}
+                          </h3>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Resumen Financiero */}
                   <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
                     <div>
@@ -763,46 +865,111 @@ export const SaleProductsView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Recursos Adjuntos (PDF / Video) - Solo para Fabricación */}
-                  {isDetailFabricacion && (detailProduct.recipeFileUrl || detailProduct.videoUrl) && (
-                    <div className="space-y-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
-                      <h4 className="font-bold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                        <Layers className="w-4 h-4 text-indigo-600" />
-                        Recursos Multimedia & Documentación
-                      </h4>
+                  {/* Recursos Adjuntos (PDF / Video) */}
+                  {(detailProduct.recipeFileUrl || detailProduct.videoUrl) && (
+                    <div className="space-y-3.5 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-bold text-xs uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+                          <Layers className="w-4 h-4 text-indigo-600" />
+                          Recursos Multimedia & Documentación
+                        </h4>
+                        <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
+                          Ficha Técnica & Video
+                        </span>
+                      </div>
 
                       <div className="space-y-3">
+                        {/* 1. Documento / Ficha Técnica */}
                         {detailProduct.recipeFileUrl && (
-                          <div className="bg-white p-3 rounded-xl border border-slate-200 flex items-center justify-between shadow-xs">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shrink-0">
-                                <FileText className="w-4 h-4" />
+                          <div className="bg-white p-3.5 rounded-2xl border border-indigo-100 shadow-xs space-y-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 shrink-0">
+                                  <FileText className="w-5 h-5" />
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold text-slate-800 truncate">
+                                    {detailProduct.recipeFileName || getFileNameFromUrl(detailProduct.recipeFileUrl)}
+                                  </p>
+                                  <span className="text-[10px] text-slate-400">Documento / Ficha Técnica en Supabase Storage</span>
+                                </div>
                               </div>
-                              <div className="min-w-0">
-                                <p className="text-xs font-bold text-slate-800 truncate">
-                                  {detailProduct.recipeFileName || 'Ficha Técnica de Receta (PDF)'}
-                                </p>
-                                <span className="text-[10px] text-slate-400">Almacenado en Supabase Storage</span>
+
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewDoc(!previewDoc)}
+                                  className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 border transition ${
+                                    previewDoc
+                                      ? 'bg-indigo-50 text-indigo-700 border-indigo-300'
+                                      : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200'
+                                  }`}
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span>{previewDoc ? 'Ocultar visor' : 'Ver documento'}</span>
+                                  {previewDoc ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                                </button>
+
+                                <a
+                                  href={detailProduct.recipeFileUrl}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition"
+                                >
+                                  <span>Abrir pestaña</span>
+                                  <ArrowUpRight className="w-3.5 h-3.5" />
+                                </a>
                               </div>
                             </div>
-                            <a
-                              href={detailProduct.recipeFileUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-xs transition"
-                            >
-                              <span>Abrir Documento</span>
-                              <ArrowUpRight className="w-3.5 h-3.5" />
-                            </a>
+
+                            {/* Visor Embebido de Documento / Ficha Técnica */}
+                            {previewDoc && (
+                              <div className="border border-slate-200 rounded-2xl overflow-hidden bg-slate-100 shadow-inner mt-2 animate-fadeIn">
+                                <div className="px-3 py-2 bg-slate-200/70 border-b border-slate-300 flex items-center justify-between text-xs text-slate-600">
+                                  <span className="font-bold flex items-center gap-1.5">
+                                    <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                                    Visualizador integrado de documento
+                                  </span>
+                                  <a
+                                    href={detailProduct.recipeFileUrl}
+                                    download
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-[11px] text-indigo-600 hover:underline font-bold flex items-center gap-1"
+                                  >
+                                    <Download className="w-3 h-3" /> Descargar archivo
+                                  </a>
+                                </div>
+                                {detailProduct.recipeFileUrl.toLowerCase().includes('.png') ||
+                                detailProduct.recipeFileUrl.toLowerCase().includes('.jpg') ||
+                                detailProduct.recipeFileUrl.toLowerCase().includes('.jpeg') ||
+                                detailProduct.recipeFileUrl.toLowerCase().includes('.webp') ? (
+                                  <div className="p-3 flex items-center justify-center bg-white">
+                                    <img
+                                      src={detailProduct.recipeFileUrl}
+                                      alt="Ficha técnica de receta"
+                                      className="max-h-[460px] w-auto object-contain rounded-lg"
+                                    />
+                                  </div>
+                                ) : (
+                                  <iframe
+                                    src={detailProduct.recipeFileUrl}
+                                    title="Visor Ficha Técnica"
+                                    className="w-full h-[460px] bg-white border-0"
+                                  />
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
 
+                        {/* 2. Video Tutorial de Elaboración */}
                         {detailProduct.videoUrl && (
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                          <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-xs space-y-2.5">
+                            <div className="flex items-center justify-between text-xs font-bold text-slate-800">
                               <span className="flex items-center gap-1.5">
                                 <Video className="w-4 h-4 text-rose-600" />
-                                Video Tutorial de Elaboración:
+                                Video Tutorial de Elaboración & Preparación:
                               </span>
                               <a
                                 href={detailProduct.videoUrl}
@@ -810,20 +977,29 @@ export const SaleProductsView: React.FC = () => {
                                 rel="noreferrer"
                                 className="text-indigo-600 hover:underline flex items-center gap-1 text-[11px]"
                               >
-                                Enlace directo <ArrowUpRight className="w-3 h-3" />
+                                <span>Ver en pestaña externa</span>
+                                <ExternalLink className="w-3 h-3" />
                               </a>
                             </div>
 
-                            {/* Reproductor de Video Embebido si es archivo directo o Supabase Storage */}
-                            {detailProduct.videoUrl.includes('supabase.co') ||
-                            detailProduct.videoUrl.endsWith('.mp4') ||
-                            detailProduct.videoUrl.endsWith('.webm') ||
-                            detailProduct.videoUrl.endsWith('.mov') ? (
-                              <div className="rounded-xl overflow-hidden bg-black shadow-md border border-slate-800">
+                            {/* Reproductor de Video Embebido */}
+                            {getEmbedVideoUrl(detailProduct.videoUrl) ? (
+                              <div className="relative aspect-video w-full rounded-2xl overflow-hidden shadow-md border border-slate-800 bg-black">
+                                <iframe
+                                  src={getEmbedVideoUrl(detailProduct.videoUrl)!}
+                                  title="Video Tutorial"
+                                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                  allowFullScreen
+                                  className="w-full h-full border-0"
+                                />
+                              </div>
+                            ) : isDirectVideoUrl(detailProduct.videoUrl) ? (
+                              <div className="rounded-2xl overflow-hidden shadow-md border border-slate-800 bg-black">
                                 <video
                                   src={detailProduct.videoUrl}
                                   controls
-                                  className="w-full max-h-64 object-contain"
+                                  preload="metadata"
+                                  className="w-full max-h-80 object-contain bg-black mx-auto"
                                 />
                               </div>
                             ) : (
@@ -831,10 +1007,10 @@ export const SaleProductsView: React.FC = () => {
                                 href={detailProduct.videoUrl}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs border border-slate-200 transition"
+                                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold text-xs border border-slate-200 transition"
                               >
                                 <Video className="w-4 h-4 text-rose-600" />
-                                <span>Ver video en plataforma externa</span>
+                                <span>Abrir video en plataforma externa</span>
                                 <ArrowUpRight className="w-3.5 h-3.5 ml-1" />
                               </a>
                             )}
@@ -953,6 +1129,7 @@ export const SaleProductsView: React.FC = () => {
                     leftIcon={<Edit2 className="w-3.5 h-3.5" />}
                     onClick={() => {
                       const p = detailProduct;
+                      setPreviewDoc(false);
                       setDetailProduct(null);
                       handleEdit(p);
                     }}
@@ -961,7 +1138,10 @@ export const SaleProductsView: React.FC = () => {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => setDetailProduct(null)}
+                    onClick={() => {
+                      setPreviewDoc(false);
+                      setDetailProduct(null);
+                    }}
                   >
                     Cerrar
                   </Button>

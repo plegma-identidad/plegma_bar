@@ -25,6 +25,7 @@ import {
   Settings,
   ExternalLink,
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
 import { storageService } from '../../services/storageService';
 import { ConfigManagerModal } from '../ui/ConfigManagerModal';
 
@@ -56,6 +57,41 @@ const SUBCATEGORIES_DEFAULT: Record<string, string[]> = {
   'Postres': ['Tortas', 'Helados', 'Postres de autor'],
   'Combos & Promos': ['Almuerzos', 'Meriendas', 'Cenas'],
   'Varios': ['General'],
+};
+
+// Helper para convertir URLs de YouTube o Vimeo a URLs embebibles
+const getEmbedVideoUrl = (url?: string): string | null => {
+  if (!url) return null;
+  try {
+    const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+    if (ytMatch && ytMatch[1]) {
+      return `https://www.youtube.com/embed/${ytMatch[1]}`;
+    }
+    const vimeoMatch = url.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/([^\/]*)\/videos\/|album\/(\d+)\/video\/|)(\d+)(?:$|\/|\?)/);
+    if (vimeoMatch && vimeoMatch[3]) {
+      return `https://player.vimeo.com/video/${vimeoMatch[3]}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+// Helper para obtener un nombre legible del archivo a partir de su URL
+const getFileNameFromUrl = (url?: string, defaultName = 'Ficha Técnica de Receta'): string => {
+  if (!url) return defaultName;
+  try {
+    const cleanUrl = url.split('?')[0];
+    const segments = cleanUrl.split('/');
+    const last = segments[segments.length - 1];
+    if (last) {
+      const decoded = decodeURIComponent(last);
+      return decoded.replace(/^[a-z]+_/i, '');
+    }
+    return defaultName;
+  } catch {
+    return defaultName;
+  }
 };
 
 export const SaleProductModal: React.FC<SaleProductModalProps> = ({
@@ -113,20 +149,43 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
     if (!isOpen) return;
 
     if (productToEdit) {
-      setProductType(productToEdit.productType);
-      setCode(productToEdit.code);
-      setName(productToEdit.name);
-      setCategory(productToEdit.category);
+      // Normalizar productType a 'FABRICACION' o 'REVENTA' para que coincida exactamente con las pestañas del modal
+      const isFab = String(productToEdit.productType || '').toLowerCase().includes('fab');
+      setProductType(isFab ? 'FABRICACION' : 'REVENTA');
+      setCode(productToEdit.code || '');
+      setName(productToEdit.name || '');
+      setCategory(productToEdit.category || '');
       setSubcategory(productToEdit.subcategory || '');
-      setSellingPrice(productToEdit.sellingPrice.toString());
+      setSellingPrice((productToEdit.sellingPrice ?? 0).toString());
       setImageUrl(productToEdit.imageUrl || '');
       setRecipeFileUrl(productToEdit.recipeFileUrl || '');
-      setRecipeFileName(productToEdit.recipeFileName || '');
+      
+      // Asegurar nombre legible del archivo de receta si existe URL
+      const resolvedFileName = productToEdit.recipeFileName ||
+        (productToEdit.recipeFileUrl ? getFileNameFromUrl(productToEdit.recipeFileUrl) : '');
+      setRecipeFileName(resolvedFileName);
+      
       setVideoUrl(productToEdit.videoUrl || '');
-      setActive(productToEdit.active);
+      setActive(productToEdit.active ?? true);
       setLinkedItemId(productToEdit.linkedItemId || '');
       const existingRecipe = productToEdit.recipe || productToEdit.recipeComponents || [];
       setRecipeComponents([...existingRecipe]);
+
+      // Auto-recuperación de seguridad: Si falta receta, video o foto, revisar si ya existen en Storage
+      if (productToEdit.code && (!productToEdit.recipeFileUrl || !productToEdit.videoUrl || !productToEdit.imageUrl)) {
+        storageService.getProductFiles(productToEdit.code).then((files) => {
+          if (files.recipeFileUrl) {
+            setRecipeFileUrl((prev) => prev || files.recipeFileUrl!);
+            setRecipeFileName((prev) => prev || files.recipeFileName || 'Ficha Técnica de Receta');
+          }
+          if (files.videoUrl) {
+            setVideoUrl((prev) => prev || files.videoUrl!);
+          }
+          if (files.imageUrl) {
+            setImageUrl((prev) => prev || files.imageUrl!);
+          }
+        });
+      }
     } else {
       // Nuevo producto
       setProductType('FABRICACION');
@@ -169,6 +228,15 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
       const res = await storageService.uploadProductMedia(code.trim(), 'foto', file);
       if (res) {
         setImageUrl(res.url);
+        
+        // Si estamos editando un producto existente, respaldar de inmediato en Supabase
+        if (productToEdit?.id) {
+          await supabase
+            .from('sale_products')
+            .update({ image_url: res.url, updated_at: new Date().toISOString() })
+            .eq('id', productToEdit.id);
+        }
+
         showToast('Foto subida exitosamente a Supabase Storage.', 'success');
       } else {
         showToast('Error al subir la foto a Supabase Storage.', 'error');
@@ -186,6 +254,12 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
       await storageService.deleteProductMedia(imageUrl);
     }
     setImageUrl('');
+    if (productToEdit?.id) {
+      await supabase
+        .from('sale_products')
+        .update({ image_url: null, updated_at: new Date().toISOString() })
+        .eq('id', productToEdit.id);
+    }
     showToast('Foto quitada de Storage.', 'info');
   };
 
@@ -209,6 +283,19 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
       if (res) {
         setRecipeFileUrl(res.url);
         setRecipeFileName(res.name);
+
+        // Si estamos editando un producto existente, respaldar de inmediato en Supabase
+        if (productToEdit?.id) {
+          await supabase
+            .from('sale_products')
+            .update({
+              recipe_file_url: res.url,
+              recipe_file_name: res.name,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', productToEdit.id);
+        }
+
         showToast('Archivo de receta subido a Supabase Storage.', 'success');
       } else {
         showToast('Error al subir archivo de receta.', 'error');
@@ -227,6 +314,16 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
     }
     setRecipeFileUrl('');
     setRecipeFileName('');
+    if (productToEdit?.id) {
+      await supabase
+        .from('sale_products')
+        .update({
+          recipe_file_url: null,
+          recipe_file_name: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', productToEdit.id);
+    }
     showToast('Archivo de receta quitado.', 'info');
   };
 
@@ -249,6 +346,18 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
       const res = await storageService.uploadProductMedia(code.trim(), 'video', file);
       if (res) {
         setVideoUrl(res.url);
+
+        // Si estamos editando un producto existente, respaldar de inmediato en Supabase
+        if (productToEdit?.id) {
+          await supabase
+            .from('sale_products')
+            .update({
+              video_url: res.url,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', productToEdit.id);
+        }
+
         showToast('Video subido exitosamente a Supabase Storage.', 'success');
       } else {
         showToast('Error al subir el video a Supabase Storage.', 'error');
@@ -266,6 +375,15 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
       await storageService.deleteProductMedia(videoUrl);
     }
     setVideoUrl('');
+    if (productToEdit?.id) {
+      await supabase
+        .from('sale_products')
+        .update({
+          video_url: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', productToEdit.id);
+    }
     showToast('Video quitado.', 'info');
   };
 
@@ -387,13 +505,13 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
       return;
     }
 
-    const isFab = productType === 'FABRICACION';
+    const isFab = String(productType || '').toUpperCase().includes('FAB');
 
     const payload: Partial<SaleProduct> = {
       id: productToEdit ? productToEdit.id : undefined,
       code: code.trim(),
       name: name.trim(),
-      productType,
+      productType: isFab ? 'Fabricación' : 'Reventa',
       category,
       subcategory: subcategory || undefined,
       sellingPrice: priceNum,
@@ -401,9 +519,9 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
       profitMargin,
       linkedItemId: !isFab ? linkedItemId : undefined,
       imageUrl: imageUrl.trim() || undefined,
-      recipeFileUrl: isFab ? (recipeFileUrl.trim() || undefined) : undefined,
-      recipeFileName: isFab ? (recipeFileName.trim() || undefined) : undefined,
-      videoUrl: isFab ? (videoUrl.trim() || undefined) : undefined,
+      recipeFileUrl: recipeFileUrl.trim() || undefined,
+      recipeFileName: recipeFileName.trim() || undefined,
+      videoUrl: videoUrl.trim() || undefined,
       active,
       recipe: isFab ? recipeComponents : [],
       recipeComponents: isFab ? recipeComponents : [],
@@ -1047,8 +1165,22 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
 
                 {videoUrl ? (
                   <div className="bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-md">
-                    {/* Si es video reproducible directo (archivo Storage o formato compatible) */}
-                    {videoUrl.includes('supabase.co') || videoUrl.endsWith('.mp4') || videoUrl.endsWith('.webm') || videoUrl.endsWith('.mov') ? (
+                    {/* Si es video embebible (YouTube / Vimeo) */}
+                    {getEmbedVideoUrl(videoUrl) ? (
+                      <div className="relative aspect-video w-full bg-black">
+                        <iframe
+                          src={getEmbedVideoUrl(videoUrl)!}
+                          title="Video Tutorial"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                          className="w-full h-full border-0"
+                        />
+                      </div>
+                    ) : videoUrl.includes('supabase.co') ||
+                      videoUrl.endsWith('.mp4') ||
+                      videoUrl.endsWith('.webm') ||
+                      videoUrl.endsWith('.mov') ||
+                      videoUrl.includes('/video_') ? (
                       <video
                         src={videoUrl}
                         controls
