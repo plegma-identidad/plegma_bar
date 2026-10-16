@@ -9,7 +9,8 @@ export type HelpModule =
   | 'ingredients'
   | 'kanban'
   | 'purchasing'
-  | 'payruns';
+  | 'payruns'
+  | 'sale_products';
 
 interface ModuleHelpModalProps {
   module: HelpModule;
@@ -97,6 +98,17 @@ const MODULE_DATA: Record<HelpModule, { title: string; subtitle: string; icon: R
       { title: 'Paso 3: Adicionales y Descuentos', content: 'Si necesitas sumar dinero extra (premios, feriados, propinas) o restar dinero (adelantos, llegadas tarde), haz clic en el botón "+" (Añadir Concepto) en la fila de cada empleado para ajustar su monto final.' },
       { title: 'Paso 4: Confirmar Liquidación', content: 'Una vez revisados los totales, presiona "Crear Liquidación". ¡Atención! Al hacer esto, todas las marcaciones incluidas pasarán a estado "Liquidada" y ya no podrán ser modificadas.' },
       { title: 'Paso 5: Pagos y Emisión de Recibos', content: 'Desde el panel principal podrás ingresar al detalle de la liquidación creada. Allí podrás registrar cuando le abones el sueldo a un empleado y "Reimprimir Recibo" para entregarle el comprobante físico.' }
+    ]
+  },
+  sale_products: {
+    title: 'Guía de Uso: Prod. de Venta (Carta)',
+    subtitle: 'Escandallo, recetas de elaboración, reventa directa y costeo',
+    icon: <PackageOpen className="w-5 h-5" />,
+    sections: [
+      { title: '1. Productos de Fabricación', content: 'Son platos o tragos elaborados en el local (hamburguesas, pizzas, cócteles). Requieren definir su receta o escandallo seleccionando insumos del inventario o productos de producción (semielaborados).' },
+      { title: '2. Productos de Reventa Directa', content: 'Son artículos que se adquieren terminados para vender directamente al cliente (gaseosas, cervezas en lata). Se vinculan a un insumo para consultar su stock disponible y costo de compra.' },
+      { title: '3. Costo y Margen de Rentabilidad', content: 'El costo se calcula sumando los componentes de la receta. El sistema computa automáticamente el margen sobre venta: ((Precio Venta - Costo) / Precio Venta) × 100.' },
+      { title: '4. Ficha Técnica y Tutoriales', content: 'Puedes adjuntar el PDF de la ficha de cocina y el enlace a un video de YouTube con el instructivo de preparación para capacitar al equipo.' }
     ]
   }
 };

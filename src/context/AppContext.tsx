@@ -48,6 +48,8 @@ import {
   CurrentAccountMovement,
   Receipt,
   Client,
+  SaleProduct,
+  ProductionProduct,
 } from '../types';
 import { configService } from '../services/configService';
 import { providersService } from '../services/providersService';
@@ -60,6 +62,8 @@ import { saleOrdersService } from '../services/saleOrdersService';
 import { cashService } from '../services/cashService';
 import { currentAccountService } from '../services/currentAccountService';
 import { auditLogsService } from '../services/auditLogsService';
+import { saleProductsService } from '../services/saleProductsService';
+import { productionsService } from '../services/productionsService';
 import {
   INITIAL_PROVIDERS,
   INITIAL_ITEMS,
@@ -259,6 +263,18 @@ interface AppContextType {
   toggleOptionGroupActive: (groupId: string) => { success: boolean; message: string };
   toggleGroupSelectionType: (groupId: string) => { success: boolean; message: string };
 
+  // Productos de Venta (Carta) y Producciones
+  saleProducts: SaleProduct[];
+  productionProducts: ProductionProduct[];
+  addOrUpdateSaleProduct: (product: Partial<SaleProduct>) => Promise<{ success: boolean; message: string; product?: SaleProduct }>;
+  deleteSaleProduct: (productId: string) => Promise<{ success: boolean; message: string }>;
+  toggleSaleProductActive: (productId: string) => Promise<{ success: boolean; message: string }>;
+  duplicateSaleProduct: (productId: string) => Promise<{ success: boolean; message: string; product?: SaleProduct }>;
+  addOrUpdateProductionProduct: (product: Partial<ProductionProduct>) => Promise<{ success: boolean; message: string; product?: ProductionProduct }>;
+  deleteProductionProduct: (productId: string) => Promise<{ success: boolean; message: string }>;
+  toggleProductionProductActive: (productId: string) => Promise<{ success: boolean; message: string }>;
+  duplicateProductionProduct: (productId: string) => Promise<{ success: boolean; message: string; product?: ProductionProduct }>;
+
   // Cuentas Corrientes State
   ccMovements: CurrentAccountMovement[];
   setCcMovements: React.Dispatch<React.SetStateAction<CurrentAccountMovement[]>>;
@@ -390,7 +406,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const fetchInitialDataFromSupabase = async () => {
       try {
-        const [cats, subcats, units, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs] = await Promise.all([
+        const [cats, subcats, units, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts] = await Promise.all([
           configService.getByType('category'),
           configService.getByType('subcategory'),
           configService.getByType('unit'),
@@ -409,6 +425,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           currentAccountService.getReceipts(),
           currentAccountService.getEmployeeConsumptions(),
           auditLogsService.getAll(),
+          saleProductsService.getAll(),
+          productionsService.getAll(),
         ]);
         setItemCategories(cats);
         setItemSubcategories(subcats);
@@ -428,6 +446,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setCcReceipts(fetchedReceipts);
         setEmployeeConsumptions(fetchedEmployeeConsumptions);
         setAuditLogs(fetchedAuditLogs);
+        setSaleProducts(fetchedSaleProducts);
+        setProductionProducts(fetchedProductionProducts);
       } catch (err) {
         console.error('Error al cargar datos iniciales de Supabase:', err);
       }
@@ -2119,6 +2139,151 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // ----------------------------------------------------
+  // PRODUCTOS DE VENTA (CARTA) Y PRODUCCIONES
+  // ----------------------------------------------------
+  const [saleProducts, setSaleProducts] = useState<SaleProduct[]>([]);
+  const [productionProducts, setProductionProducts] = useState<ProductionProduct[]>([]);
+
+  const addOrUpdateSaleProduct = async (product: SaleProduct): Promise<{ success: boolean; message: string; product?: SaleProduct }> => {
+    try {
+      const saved = await saleProductsService.save(product);
+      if (saved) {
+        setSaleProducts((prev) => {
+          const idx = prev.findIndex((p) => p.id === saved.id || (product.id && p.id === product.id));
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = saved;
+            return copy;
+          }
+          return [saved, ...prev];
+        });
+        showToast(`Producto "${saved.name}" guardado exitosamente.`, 'success');
+        return { success: true, message: 'Producto guardado.', product: saved };
+      }
+      showToast('Error al guardar el producto en Supabase.', 'error');
+      return { success: false, message: 'Error al guardar el producto.' };
+    } catch (err: any) {
+      showToast(err.message || 'Error al guardar producto.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  const deleteSaleProduct = async (productId: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const ok = await saleProductsService.delete(productId);
+      if (ok) {
+        setSaleProducts((prev) => prev.filter((p) => p.id !== productId));
+        showToast('Producto eliminado correctamente.', 'success');
+        return { success: true, message: 'Producto eliminado.' };
+      }
+      showToast('No se pudo eliminar el producto.', 'error');
+      return { success: false, message: 'No se pudo eliminar el producto.' };
+    } catch (err: any) {
+      showToast(err.message || 'Error al eliminar producto.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  const toggleSaleProductActive = async (productId: string): Promise<{ success: boolean; message: string }> => {
+    const prod = saleProducts.find((p) => p.id === productId);
+    if (!prod) return { success: false, message: 'Producto no encontrado.' };
+    const newActive = !prod.active;
+    setSaleProducts((prev) =>
+      prev.map((p) => (p.id === productId ? { ...p, active: newActive } : p))
+    );
+    const ok = await saleProductsService.toggleActive(productId, newActive);
+    if (ok) {
+      showToast(`Producto ${newActive ? 'activado' : 'inactivado'} correctamente.`, 'success');
+      return { success: true, message: 'Estado actualizado.' };
+    }
+    return { success: false, message: 'Error al actualizar estado.' };
+  };
+
+  const duplicateSaleProduct = async (productId: string): Promise<{ success: boolean; message: string; product?: SaleProduct }> => {
+    const prod = saleProducts.find((p) => p.id === productId);
+    if (!prod) return { success: false, message: 'Producto no encontrado.' };
+    const duplicated: SaleProduct = {
+      ...prod,
+      id: '',
+      code: `${prod.code}-COP`,
+      name: `${prod.name} (Copia)`,
+      recipeComponents: (prod.recipeComponents || []).map((rc) => ({
+        ...rc,
+        id: '',
+      })),
+    };
+    return await addOrUpdateSaleProduct(duplicated);
+  };
+
+  const addOrUpdateProductionProduct = async (product: Partial<ProductionProduct>): Promise<{ success: boolean; message: string; product?: ProductionProduct }> => {
+    try {
+      const saved = await productionsService.save(product);
+      if (saved) {
+        setProductionProducts((prev) => {
+          const idx = prev.findIndex((p) => p.id === saved.id || (product.id && p.id === product.id));
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = saved;
+            return copy;
+          }
+          return [saved, ...prev];
+        });
+        showToast(`Producción "${saved.name}" guardada exitosamente.`, 'success');
+        return { success: true, message: 'Producción guardada.', product: saved };
+      }
+      showToast('Error al guardar la producción en Supabase.', 'error');
+      return { success: false, message: 'Error al guardar la producción.' };
+    } catch (err: any) {
+      showToast(err.message || 'Error al guardar producción.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  const deleteProductionProduct = async (productId: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const ok = await productionsService.delete(productId);
+      if (ok) {
+        setProductionProducts((prev) => prev.filter((p) => p.id !== productId));
+        showToast('Producción eliminada correctamente.', 'success');
+        return { success: true, message: 'Producción eliminada.' };
+      }
+      showToast('No se pudo eliminar la producción.', 'error');
+      return { success: false, message: 'No se pudo eliminar la producción.' };
+    } catch (err: any) {
+      showToast(err.message || 'Error al eliminar producción.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  const toggleProductionProductActive = async (productId: string): Promise<{ success: boolean; message: string }> => {
+    const prod = productionProducts.find((p) => p.id === productId);
+    if (!prod) return { success: false, message: 'Producción no encontrada.' };
+    const newActive = !prod.active;
+    setProductionProducts((prev) =>
+      prev.map((p) => (p.id === productId ? { ...p, active: newActive } : p))
+    );
+    const ok = await productionsService.toggleActive(productId, prod.active);
+    if (ok) {
+      showToast(`Producción ${newActive ? 'activada' : 'pausada'} correctamente.`, 'success');
+      return { success: true, message: 'Estado actualizado.' };
+    }
+    return { success: false, message: 'Error al actualizar estado.' };
+  };
+
+  const duplicateProductionProduct = async (productId: string): Promise<{ success: boolean; message: string; product?: ProductionProduct }> => {
+    const prod = productionProducts.find((p) => p.id === productId);
+    if (!prod) return { success: false, message: 'Producción no encontrada.' };
+    const duplicated = await productionsService.duplicate(productId, prod);
+    if (duplicated) {
+      setProductionProducts((prev) => [duplicated, ...prev]);
+      showToast(`Producción "${duplicated.name}" duplicada con éxito.`, 'success');
+      return { success: true, message: 'Producción duplicada.', product: duplicated };
+    }
+    showToast('No se pudo duplicar la producción.', 'error');
+    return { success: false, message: 'Error al duplicar producción.' };
+  };
+
+  // ----------------------------------------------------
   // PEDIDOS Y VENTAS (COMMERCIAL ENGINE)
   // ----------------------------------------------------
   const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
@@ -3293,6 +3458,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteOptionFromGroup,
         toggleOptionGroupActive,
         toggleGroupSelectionType,
+        saleProducts,
+        productionProducts,
+        addOrUpdateSaleProduct,
+        deleteSaleProduct,
+        toggleSaleProductActive,
+        duplicateSaleProduct,
+        addOrUpdateProductionProduct,
+        deleteProductionProduct,
+        toggleProductionProductActive,
+        duplicateProductionProduct,
         ccMovements,
         setCcMovements,
         ccReceipts,

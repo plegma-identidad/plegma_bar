@@ -810,6 +810,80 @@ export interface SaleTypeConfig {
 }
 
 // ----------------------------------------------------
+// VENTAS — PRODUCTOS DE VENTA (CARTA) Y RECETAS
+// ----------------------------------------------------
+
+export type SaleProductType = 'Fabricación' | 'Reventa' | 'FABRICACION' | 'REVENTA';
+
+export type RecipeComponentType = 'Insumo' | 'Producción' | 'INSUMO' | 'PRODUCCION';
+
+export interface RecipeComponent {
+  id: string;
+  saleProductId?: string;
+  componentType: RecipeComponentType;
+  componentId: string; // ID de Item o de ProductionProduct
+  componentName: string;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  subtotal: number;
+}
+
+export interface ProductionRecipeItem {
+  id: string;
+  productionProductId?: string;
+  itemId: string;
+  itemName: string;
+  quantity: number;
+  unit: string;
+  unitCost: number;
+  subtotal: number;
+}
+
+export interface ProductionProduct {
+  id: string;
+  code: string;
+  name: string;
+  category: string;
+  subcategory?: string;
+  unit: string;
+  costPrice: number;
+  unitCost?: number; // Compatibilidad con vistas
+  warehouse?: string;
+  imageUrl?: string;
+  recipeFileUrl?: string;
+  recipeFileName?: string;
+  videoUrl?: string;
+  description?: string;
+  active: boolean;
+  recipe?: ProductionRecipeItem[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SaleProduct {
+  id: string;
+  code: string;
+  name: string;
+  productType: SaleProductType;
+  category: string;
+  subcategory: string;
+  sellingPrice: number;
+  costPrice: number;
+  profitMargin: number; // Porcentaje calculado: ((Venta - Costo) / Venta) * 100
+  linkedItemId?: string; // Solo Reventa: ID del ítem de insumos para costo y stock
+  imageUrl?: string;
+  recipeFileUrl?: string;
+  recipeFileName?: string;
+  videoUrl?: string;
+  active: boolean;
+  recipe?: RecipeComponent[]; // Componentes de la receta (alias)
+  recipeComponents?: RecipeComponent[]; // Solo Fabricación: componentes de la receta
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// ----------------------------------------------------
 // VENTAS — PEDIDOS / VENTAS
 // ----------------------------------------------------
 

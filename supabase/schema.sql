@@ -542,3 +542,112 @@ ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Permitir lectura y escritura publica temporal en audit_logs" ON public.audit_logs;
 CREATE POLICY "Permitir lectura y escritura publica temporal en audit_logs"
   ON public.audit_logs FOR ALL USING (true) WITH CHECK (true);
+
+-- --------------------------------------------------------------------
+-- FASE 8: PRODUCTOS DE VENTA (CARTA) Y RECETAS / ESCANDALLOS
+-- --------------------------------------------------------------------
+
+-- 8.1 Productos de Producción (Semielaborados / Pre-elaboraciones)
+CREATE TABLE IF NOT EXISTS public.production_products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    subcategory TEXT NOT NULL DEFAULT 'General',
+    unit TEXT NOT NULL DEFAULT 'kg',
+    cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    unit_cost NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    warehouse TEXT NOT NULL DEFAULT 'Freezer Producción',
+    yield_quantity NUMERIC(12, 2) NOT NULL DEFAULT 1.00,
+    image_url TEXT,
+    recipe_file_url TEXT,
+    recipe_file_name TEXT,
+    video_url TEXT,
+    description TEXT,
+    notes TEXT,
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 8.1.1 Líneas de Receta / Escandallo para Productos de Producción (Solo Insumos)
+CREATE TABLE IF NOT EXISTS public.production_product_recipes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    production_product_id UUID NOT NULL REFERENCES public.production_products(id) ON DELETE CASCADE,
+    item_id UUID NOT NULL REFERENCES public.items(id) ON DELETE RESTRICT,
+    item_name TEXT NOT NULL,
+    quantity NUMERIC(12, 4) NOT NULL DEFAULT 0.0001,
+    unit TEXT NOT NULL DEFAULT 'kg',
+    unit_cost NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    subtotal NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 8.2 Maestro de Productos para la Venta (Carta)
+CREATE TABLE IF NOT EXISTS public.sale_products (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    product_type TEXT NOT NULL CHECK (product_type IN ('Fabricación', 'Reventa')),
+    category TEXT NOT NULL,
+    subcategory TEXT NOT NULL DEFAULT 'General',
+    selling_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    cost_price NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    profit_margin NUMERIC(6, 2) NOT NULL DEFAULT 0.00,
+    linked_item_id UUID REFERENCES public.items(id) ON DELETE SET NULL,
+    image_url TEXT,
+    recipe_file_url TEXT,
+    recipe_file_name TEXT,
+    video_url TEXT,
+    active BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 8.3 Líneas de Receta / Escandallo para Productos de Venta
+CREATE TABLE IF NOT EXISTS public.sale_product_recipes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    sale_product_id UUID NOT NULL REFERENCES public.sale_products(id) ON DELETE CASCADE,
+    component_type TEXT NOT NULL CHECK (component_type IN ('Insumo', 'Producción')),
+    component_id UUID NOT NULL,
+    component_name TEXT NOT NULL,
+    quantity NUMERIC(12, 4) NOT NULL DEFAULT 0.0000,
+    unit TEXT NOT NULL DEFAULT 'un',
+    unit_cost NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    subtotal NUMERIC(12, 2) NOT NULL DEFAULT 0.00,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Índices de búsqueda y rendimiento
+CREATE INDEX IF NOT EXISTS idx_prod_products_active ON public.production_products(active);
+CREATE INDEX IF NOT EXISTS idx_prod_products_category ON public.production_products(category);
+CREATE INDEX IF NOT EXISTS idx_prod_recipes_product ON public.production_product_recipes(production_product_id);
+CREATE INDEX IF NOT EXISTS idx_prod_recipes_item ON public.production_product_recipes(item_id);
+CREATE INDEX IF NOT EXISTS idx_sale_products_type ON public.sale_products(product_type);
+CREATE INDEX IF NOT EXISTS idx_sale_products_category ON public.sale_products(category);
+CREATE INDEX IF NOT EXISTS idx_sale_products_active ON public.sale_products(active);
+CREATE INDEX IF NOT EXISTS idx_sale_product_recipes_product ON public.sale_product_recipes(sale_product_id);
+
+-- Habilitar RLS
+ALTER TABLE public.production_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.production_product_recipes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sale_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sale_product_recipes ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de acceso público (desarrollo/producción PLEGMA)
+DROP POLICY IF EXISTS "Permitir acceso publico production_products" ON public.production_products;
+CREATE POLICY "Permitir acceso publico production_products"
+    ON public.production_products FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir acceso publico production_product_recipes" ON public.production_product_recipes;
+CREATE POLICY "Permitir acceso publico production_product_recipes"
+    ON public.production_product_recipes FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir acceso publico sale_products" ON public.sale_products;
+CREATE POLICY "Permitir acceso publico sale_products"
+    ON public.sale_products FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir acceso publico sale_product_recipes" ON public.sale_product_recipes;
+CREATE POLICY "Permitir acceso publico sale_product_recipes"
+    ON public.sale_product_recipes FOR ALL USING (true) WITH CHECK (true);
+

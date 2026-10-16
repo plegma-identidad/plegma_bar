@@ -25,6 +25,7 @@ import {
   Receipt,
   Utensils,
   Calendar,
+  ChefHat,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -59,11 +60,20 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'kanban', label: 'Tablero Semanal', description: 'Kanban semanal de proveedores & conteos', icon: Kanban },
       { id: 'items', label: 'Maestro Insumos & Stock', description: 'Catálogo de insumos, límites & precios', icon: Package },
-      { id: 'ventas_cc', label: 'Ventas — Cuenta Corriente', description: 'Cuentas corrientes de clientes, consumos & recibos', icon: Receipt },
+      { id: 'producciones', label: 'Producciones', description: 'Preparaciones internas, recetas de insumos & costos', icon: ChefHat },
+    ],
+  },
+  {
+    id: 'ventas',
+    label: 'Ventas',
+    icon: Utensils,
+    items: [
+      { id: 'ventas_carta', label: 'Prod. de Venta (Carta)', description: 'Recetas, productos de fabricación & reventa', icon: ChefHat },
+      { id: 'ventas_pedidos', label: 'Ventas — Comandas v2.0', description: 'Toma POS táctil, comandas a cocina & cobro dividido', icon: Utensils },
       { id: 'ventas_caja', label: 'Ventas — Control de Caja', description: 'Apertura, cierres de turno, retiros & conciliación', icon: CreditCard },
+      { id: 'ventas_cc', label: 'Ventas — Cuenta Corriente', description: 'Cuentas corrientes de clientes, consumos & recibos', icon: Receipt },
       { id: 'ventas_reservas', label: 'Ventas — Reservas de Mesas', description: 'Gestión de comensales, mesas & reservas', icon: Calendar },
       { id: 'sales_config', label: 'Ventas — Configuración Comercial', description: 'Mesas físicas, capacidad, tipos de venta & sectores', icon: SlidersHorizontal },
-      { id: 'ventas_pedidos', label: 'Ventas — Comandas v2.0', description: 'Toma POS táctil, comandas a cocina con semáforo & cobro dividido', icon: Utensils },
     ],
   },
   {
@@ -123,6 +133,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const [expandedSidebarSections, setExpandedSidebarSections] = useState<Record<string, boolean>>({
     gestion_operativa: true,
+    ventas: true,
     compras_comprobantes: true,
     reportes_control: true,
     recursos_humanos: true,
