@@ -608,7 +608,7 @@ CREATE TABLE IF NOT EXISTS public.sale_products (
 CREATE TABLE IF NOT EXISTS public.sale_product_recipes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     sale_product_id UUID NOT NULL REFERENCES public.sale_products(id) ON DELETE CASCADE,
-    component_type TEXT NOT NULL CHECK (component_type IN ('Insumo', 'Producción')),
+    component_type TEXT NOT NULL,
     component_id UUID NOT NULL,
     component_name TEXT NOT NULL,
     quantity NUMERIC(12, 4) NOT NULL DEFAULT 0.0000,

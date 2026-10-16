@@ -50,6 +50,7 @@ export const saleProductsService = {
 
       return productsData.map((row: any) => {
         const isFab = String(row.product_type || '').toLowerCase().includes('fab');
+        const productRecipes = recipesByProduct.get(row.id) || [];
         return {
           id: row.id,
           code: row.code,
@@ -66,7 +67,8 @@ export const saleProductsService = {
           recipeFileName: row.recipe_file_name || undefined,
           videoUrl: row.video_url || undefined,
           active: row.active ?? true,
-          recipeComponents: recipesByProduct.get(row.id) || [],
+          recipe: productRecipes,
+          recipeComponents: productRecipes,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
         };
@@ -214,11 +216,19 @@ export const saleProductsService = {
       const componentsToSync = product.recipeComponents || product.recipe || [];
 
       if (normalizedType === 'Fabricación') {
-        // 1. Eliminar componentes anteriores
-        await supabase
-          .from('sale_product_recipes')
-          .delete()
-          .eq('sale_product_id', savedId);
+        try {
+          // 1. Eliminar componentes anteriores
+          const { error: delErr } = await supabase
+            .from('sale_product_recipes')
+            .delete()
+            .eq('sale_product_id', savedId);
+
+          if (delErr) {
+            console.warn('Advertencia al eliminar componentes previos de receta:', delErr.message);
+          }
+        } catch (delCatch) {
+          console.warn('Error delete sale_product_recipes:', delCatch);
+        }
 
         // 2. Insertar componentes nuevos si existen
         if (componentsToSync.length > 0) {
@@ -254,9 +264,11 @@ export const saleProductsService = {
             .select('*');
 
           if (recInsertErr) {
-            console.error('Error al guardar componentes de receta:', recInsertErr);
-          } else {
-            savedComponents = (insertedRecipes || []).map((row: any) => ({
+            console.error('Error al guardar componentes de receta en Supabase:', recInsertErr);
+            // Fallback: conservar componentes en memoria para que no se pierdan en la sesión
+            savedComponents = componentsToSync;
+          } else if (insertedRecipes && insertedRecipes.length > 0) {
+            savedComponents = insertedRecipes.map((row: any) => ({
               id: row.id,
               saleProductId: row.sale_product_id,
               componentType: row.component_type,
@@ -267,9 +279,13 @@ export const saleProductsService = {
               unitCost: Number(row.unit_cost),
               subtotal: Number(row.subtotal),
             }));
+          } else {
+            savedComponents = componentsToSync;
           }
         }
       }
+
+      const finalRecipes = savedComponents.length > 0 ? savedComponents : (normalizedType === 'Fabricación' ? componentsToSync : []);
 
       return {
         id: savedProd.id,
@@ -287,7 +303,8 @@ export const saleProductsService = {
         recipeFileName: savedProd.recipe_file_name || undefined,
         videoUrl: savedProd.video_url || undefined,
         active: savedProd.active ?? true,
-        recipeComponents: savedComponents,
+        recipe: finalRecipes,
+        recipeComponents: finalRecipes,
         createdAt: savedProd.created_at,
         updatedAt: savedProd.updated_at,
       };

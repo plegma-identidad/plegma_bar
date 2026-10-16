@@ -79,7 +79,8 @@ export const SaleProductsView: React.FC = () => {
         const matchesCode = product.code.toLowerCase().includes(q);
         const matchesCat = product.category.toLowerCase().includes(q);
         const matchesSub = product.subcategory?.toLowerCase().includes(q);
-        const matchesRecipe = product.recipe?.some((r) =>
+        const productRecipe = product.recipe || product.recipeComponents || [];
+        const matchesRecipe = productRecipe.some((r) =>
           r.componentName.toLowerCase().includes(q)
         );
 
@@ -492,7 +493,7 @@ export const SaleProductsView: React.FC = () => {
                         <div className="flex items-center justify-between bg-slate-50 px-2.5 py-1.5 rounded-lg border border-slate-100">
                           <span className="flex items-center gap-1 font-medium">
                             <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>{product.recipe?.length || 0} componentes</span>
+                            <span>{(product.recipe?.length || product.recipeComponents?.length || 0)} componentes</span>
                           </span>
                           <button
                             onClick={() => setDetailProduct(product)}
@@ -638,7 +639,7 @@ export const SaleProductsView: React.FC = () => {
                         {isFabricacion ? (
                           <span className="text-[11px] text-slate-600 flex items-center gap-1 font-medium">
                             <Layers className="w-3.5 h-3.5 text-indigo-600" />
-                            {product.recipe?.length || 0} componentes
+                            {(product.recipe?.length || product.recipeComponents?.length || 0)} componentes
                           </span>
                         ) : (
                           <div className="space-y-0.5">
@@ -805,62 +806,71 @@ export const SaleProductsView: React.FC = () => {
                         <ChefHat className="w-4 h-4 text-indigo-600" />
                         Escandallo & Composición de la Receta
                       </h4>
-                      {(!detailProduct.recipe || detailProduct.recipe.length === 0) ? (
-                        <p className="text-slate-500 italic p-3 bg-slate-50 rounded-xl border border-slate-200">
-                          No hay componentes cargados para esta receta.
-                        </p>
-                      ) : (
-                        <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
-                          <table className="w-full text-left text-xs">
-                            <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
-                              <tr>
-                                <th className="p-2.5">Tipo</th>
-                                <th className="p-2.5">Componente</th>
-                                <th className="p-2.5 text-right">Cantidad</th>
-                                <th className="p-2.5 text-right">Costo Unit.</th>
-                                <th className="p-2.5 text-right">Subtotal</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-medium">
-                              {detailProduct.recipe.map((comp) => (
-                                <tr key={comp.id} className="hover:bg-slate-50/50">
-                                  <td className="p-2.5">
-                                    {comp.componentType === 'INSUMO' ? (
-                                      <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
-                                        Insumo
-                                      </span>
-                                    ) : (
-                                      <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-200">
-                                        Producción
-                                      </span>
-                                    )}
+                      {(() => {
+                        const recipeList = detailProduct.recipe || detailProduct.recipeComponents || [];
+                        if (recipeList.length === 0) {
+                          return (
+                            <p className="text-slate-500 italic p-3 bg-slate-50 rounded-xl border border-slate-200">
+                              No hay componentes cargados para esta receta.
+                            </p>
+                          );
+                        }
+                        return (
+                          <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
+                            <table className="w-full text-left text-xs">
+                              <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
+                                <tr>
+                                  <th className="p-2.5">Tipo</th>
+                                  <th className="p-2.5">Componente</th>
+                                  <th className="p-2.5 text-right">Cantidad</th>
+                                  <th className="p-2.5 text-right">Costo Unit.</th>
+                                  <th className="p-2.5 text-right">Subtotal</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100 font-medium">
+                                {recipeList.map((comp) => {
+                                  const isCompInsumo = String(comp.componentType || '').toUpperCase().includes('INS');
+                                  return (
+                                    <tr key={comp.id || comp.componentId} className="hover:bg-slate-50/50">
+                                      <td className="p-2.5">
+                                        {isCompInsumo ? (
+                                          <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
+                                            Insumo
+                                          </span>
+                                        ) : (
+                                          <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-200">
+                                            Producción
+                                          </span>
+                                        )}
+                                      </td>
+                                      <td className="p-2.5 font-bold text-slate-800">{comp.componentName}</td>
+                                      <td className="p-2.5 text-right font-mono text-slate-700">
+                                        {comp.quantity} {comp.unit}
+                                      </td>
+                                      <td className="p-2.5 text-right font-mono text-slate-500">
+                                        ${(Number(comp.unitCost) || 0).toLocaleString('es-AR')}
+                                      </td>
+                                      <td className="p-2.5 text-right font-mono font-bold text-slate-900">
+                                        ${(Number(comp.subtotal) || 0).toLocaleString('es-AR')}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                              <tfoot className="bg-slate-50 font-bold border-t border-slate-200">
+                                <tr>
+                                  <td colSpan={4} className="p-2.5 text-right text-slate-500 uppercase text-[10px]">
+                                    Costo Total de Receta:
                                   </td>
-                                  <td className="p-2.5 font-bold text-slate-800">{comp.componentName}</td>
-                                  <td className="p-2.5 text-right font-mono text-slate-700">
-                                    {comp.quantity} {comp.unit}
-                                  </td>
-                                  <td className="p-2.5 text-right font-mono text-slate-500">
-                                    ${(Number(comp.unitCost) || 0).toLocaleString('es-AR')}
-                                  </td>
-                                  <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                                    ${(Number(comp.subtotal) || 0).toLocaleString('es-AR')}
+                                  <td className="p-2.5 text-right font-mono text-slate-900 text-sm">
+                                    ${(Number(detailProduct.costPrice) || 0).toLocaleString('es-AR')}
                                   </td>
                                 </tr>
-                              ))}
-                            </tbody>
-                            <tfoot className="bg-slate-50 font-bold border-t border-slate-200">
-                              <tr>
-                                <td colSpan={4} className="p-2.5 text-right text-slate-500 uppercase text-[10px]">
-                                  Costo Total de Receta:
-                                </td>
-                                <td className="p-2.5 text-right font-mono text-slate-900 text-sm">
-                                  ${(Number(detailProduct.costPrice) || 0).toLocaleString('es-AR')}
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                        </div>
-                      )}
+                              </tfoot>
+                            </table>
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : (
                     /* Detalle de Reventa */

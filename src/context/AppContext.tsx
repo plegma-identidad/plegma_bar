@@ -2202,15 +2202,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const duplicateSaleProduct = async (productId: string): Promise<{ success: boolean; message: string; product?: SaleProduct }> => {
     const prod = saleProducts.find((p) => p.id === productId);
     if (!prod) return { success: false, message: 'Producto no encontrado.' };
+    const recipeToCopy = prod.recipe || prod.recipeComponents || [];
+    const duplicatedRecipes = recipeToCopy.map((rc) => ({
+      ...rc,
+      id: '',
+    }));
     const duplicated: SaleProduct = {
       ...prod,
       id: '',
       code: `${prod.code}-COP`,
       name: `${prod.name} (Copia)`,
-      recipeComponents: (prod.recipeComponents || []).map((rc) => ({
-        ...rc,
-        id: '',
-      })),
+      recipe: duplicatedRecipes,
+      recipeComponents: duplicatedRecipes,
     };
     return await addOrUpdateSaleProduct(duplicated);
   };

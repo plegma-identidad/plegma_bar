@@ -104,7 +104,8 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
       setVideoUrl(productToEdit.videoUrl || '');
       setActive(productToEdit.active);
       setLinkedItemId(productToEdit.linkedItemId || '');
-      setRecipeComponents(productToEdit.recipe ? [...productToEdit.recipe] : []);
+      const existingRecipe = productToEdit.recipe || productToEdit.recipeComponents || [];
+      setRecipeComponents([...existingRecipe]);
     } else {
       // Nuevo producto
       setProductType('FABRICACION');
