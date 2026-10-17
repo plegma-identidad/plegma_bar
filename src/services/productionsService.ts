@@ -68,51 +68,7 @@ export const productionsService = {
         });
       }
 
-      // Si aún no hay registros en Supabase, devolvemos producciones modelo predefinidas
-      return [
-        {
-          id: 'd1111111-1111-4111-8111-111111111111',
-          code: 'PROD-001',
-          name: 'Medallón de Carne Blend 120g',
-          category: 'Producciones cárnicas',
-          subcategory: 'Hamburguesas',
-          unit: 'u',
-          costPrice: 950,
-          unitCost: 950,
-          warehouse: 'Freezer Producción',
-          description: 'Medallón de carne picada blend 120g moldeado y congelado',
-          active: true,
-          recipe: [],
-        },
-        {
-          id: 'd2222222-2222-4222-8222-222222222222',
-          code: 'PROD-002',
-          name: 'Salsa Barbacoa Casera Ahumada',
-          category: 'Salsas',
-          subcategory: 'Salsas Especiales',
-          unit: 'kg',
-          costPrice: 1800,
-          unitCost: 1800,
-          warehouse: 'Cámara Fría',
-          description: 'Salsa barbacoa artesanal con reducción de especias',
-          active: true,
-          recipe: [],
-        },
-        {
-          id: 'd3333333-3333-4333-8333-333333333333',
-          code: 'PROD-003',
-          name: 'Masa de Pizza Fermentación Fría',
-          category: 'Panadería',
-          subcategory: 'Pizzas',
-          unit: 'kg',
-          costPrice: 1450,
-          unitCost: 1450,
-          warehouse: 'Cámara Fría',
-          description: 'Bollo de masa madre hidratada al 65% para pizza',
-          active: true,
-          recipe: [],
-        },
-      ];
+      return [];
     } catch (err) {
       console.error('Error inesperado en productionsService.getAll:', err);
       return [];

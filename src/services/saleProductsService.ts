@@ -111,42 +111,7 @@ export const saleProductsService = {
         });
       }
 
-      // Si aún no hay filas en Supabase, proveemos los semielaborados base con UUIDs válidos para testing
-      return [
-        {
-          id: 'd1111111-1111-4111-8111-111111111111',
-          code: 'PROD-001',
-          name: 'Medallón de Carne 120g',
-          category: 'Elaborados',
-          unit: 'u',
-          costPrice: 950,
-          unitCost: 950,
-          description: 'Medallón de carne picada blend 120g moldeado',
-          active: true,
-        },
-        {
-          id: 'd2222222-2222-4222-8222-222222222222',
-          code: 'PROD-002',
-          name: 'Salsa Barbacoa Casera',
-          category: 'Salsas',
-          unit: 'kg',
-          costPrice: 1800,
-          unitCost: 1800,
-          description: 'Salsa barbacoa ahumada artesanal reducida',
-          active: true,
-        },
-        {
-          id: 'd3333333-3333-4333-8333-333333333333',
-          code: 'PROD-003',
-          name: 'Pan de Papa Artesanal',
-          category: 'Panificados',
-          unit: 'u',
-          costPrice: 420,
-          unitCost: 420,
-          description: 'Pan brioche de papa glaseado con sésamo',
-          active: true,
-        },
-      ];
+      return [];
     } catch (err) {
       console.error('Error en getProductionProducts:', err);
       return [];
