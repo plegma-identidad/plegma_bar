@@ -16,7 +16,17 @@ import {
   Package,
   Building,
   Info,
+  Upload,
+  Image,
+  Film,
+  FileUp,
+  Loader2,
+  Settings,
+  ExternalLink,
 } from 'lucide-react';
+import { supabase } from '../../lib/supabase';
+import { storageService } from '../../services/storageService';
+import { ConfigManagerModal } from '../ui/ConfigManagerModal';
 
 interface ProductionModalProps {
   productToEdit?: ProductionProduct | null;
@@ -24,38 +34,40 @@ interface ProductionModalProps {
   onClose: () => void;
 }
 
-const CATEGORIES_DEFAULT = [
-  'Producciones cárnicas',
-  'Panadería',
-  'Salsas',
-  'Guarniciones',
-  'Pastas',
-  'Cafetería & Barra',
-  'Postres & Dulces',
-  'Varios',
-];
-
-const SUBCATEGORIES_DEFAULT: Record<string, string[]> = {
-  'Producciones cárnicas': ['Milanesas', 'Hamburguesas', 'Carnes Braseadas', 'Pollo', 'Pescados'],
-  'Panadería': ['Pizzas', 'Panes Brioche', 'Focaccias', 'Masas Quebradas'],
-  'Salsas': ['Salsas Caseras', 'Emulsiones & Mayonesas', 'Reducciones & Fondos', 'Aderezos'],
-  'Guarniciones': ['Papas & Fritos', 'Verduras Cocidas', 'Purés', 'Ensaladas'],
-  'Pastas': ['Rellenas', 'Largas', 'Ñoquis'],
-  'Cafetería & Barra': ['Jarabes & Almíbares', 'Infusiones', 'Bases de Tragos'],
-  'Postres & Dulces': ['Tortas', 'Cremas & Rellenos', 'Flanes & Postres'],
-  'Varios': ['General'],
+// Helper para convertir URLs de YouTube o Vimeo a URLs embebibles
+const getEmbedVideoUrl = (url?: string): string | null => {
+  if (!url) return null;
+  try {
+    const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+    if (ytMatch && ytMatch[1]) {
+      return `https://www.youtube.com/embed/${ytMatch[1]}`;
+    }
+    const vimeoMatch = url.match(/vimeo\.com\/(?:channels\/(?:\w+\/)?|groups\/([^\/]*)\/videos\/|album\/(\d+)\/video\/|)(\d+)(?:$|\/|\?)/);
+    if (vimeoMatch && vimeoMatch[3]) {
+      return `https://player.vimeo.com/video/${vimeoMatch[3]}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 };
 
-const UNITS_DEFAULT = ['kg', 'u', 'lt', 'g', 'ml', 'porción'];
-
-const WAREHOUSES_DEFAULT = [
-  'Freezer Producción',
-  'Cámara Fría',
-  'Depósito Seco',
-  'Cocina Principal',
-  'Barra',
-  'Almacén General',
-];
+// Helper para obtener un nombre legible del archivo a partir de su URL
+const getFileNameFromUrl = (url?: string, defaultName = 'Ficha Técnica de Receta'): string => {
+  if (!url) return defaultName;
+  try {
+    const cleanUrl = url.split('?')[0];
+    const segments = cleanUrl.split('/');
+    const last = segments[segments.length - 1];
+    if (last) {
+      const decoded = decodeURIComponent(last);
+      return decoded.replace(/^[a-z]+_/i, '');
+    }
+    return defaultName;
+  } catch {
+    return defaultName;
+  }
+};
 
 export const ProductionModal: React.FC<ProductionModalProps> = ({
   productToEdit,
@@ -65,16 +77,32 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
   const {
     items,
     addOrUpdateProductionProduct,
+    productionCategories,
+    productionSubcategories,
+    productionUnits,
+    productionWarehouses,
+    setProductionCategories,
+    setProductionSubcategories,
+    setProductionUnits,
+    setProductionWarehouses,
     showToast,
   } = useApp();
+
+  // Modal de configuración dinámica de Categorías, Subcategorías, Unidades y Almacenes
+  const [configModalType, setConfigModalType] = useState<'category' | 'subcategory' | 'unit' | 'warehouse' | null>(null);
+
+  // Estados de progreso de subida a Storage
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [uploadingRecipe, setUploadingRecipe] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
 
   // Estados del Formulario
   const [code, setCode] = useState('');
   const [name, setName] = useState('');
-  const [category, setCategory] = useState(CATEGORIES_DEFAULT[0]);
-  const [subcategory, setSubcategory] = useState(SUBCATEGORIES_DEFAULT[CATEGORIES_DEFAULT[0]][0]);
-  const [unit, setUnit] = useState(UNITS_DEFAULT[0]);
-  const [warehouse, setWarehouse] = useState(WAREHOUSES_DEFAULT[0]);
+  const [category, setCategory] = useState('');
+  const [subcategory, setSubcategory] = useState('');
+  const [unit, setUnit] = useState('');
+  const [warehouse, setWarehouse] = useState('');
   const [description, setDescription] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [recipeFileUrl, setRecipeFileUrl] = useState('');
@@ -95,27 +123,51 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
     if (!isOpen) return;
 
     if (productToEdit) {
-      setCode(productToEdit.code);
-      setName(productToEdit.name);
-      setCategory(productToEdit.category || CATEGORIES_DEFAULT[0]);
-      setSubcategory(productToEdit.subcategory || SUBCATEGORIES_DEFAULT[CATEGORIES_DEFAULT[0]][0]);
-      setUnit(productToEdit.unit || UNITS_DEFAULT[0]);
-      setWarehouse(productToEdit.warehouse || WAREHOUSES_DEFAULT[0]);
+      setCode(productToEdit.code || '');
+      setName(productToEdit.name || '');
+      setCategory(productToEdit.category || (productionCategories.find((c) => c.active)?.name || 'Producciones cárnicas'));
+      setSubcategory(productToEdit.subcategory || (productionSubcategories.find((s) => s.active)?.name || 'General'));
+      setUnit(productToEdit.unit || (productionUnits.find((u) => u.active)?.name || 'kg'));
+      setWarehouse(productToEdit.warehouse || (productionWarehouses.find((w) => w.active)?.name || 'Freezer Producción'));
       setDescription(productToEdit.description || '');
       setImageUrl(productToEdit.imageUrl || '');
       setRecipeFileUrl(productToEdit.recipeFileUrl || '');
-      setRecipeFileName(productToEdit.recipeFileName || '');
+
+      const resolvedFileName = productToEdit.recipeFileName ||
+        (productToEdit.recipeFileUrl ? getFileNameFromUrl(productToEdit.recipeFileUrl) : '');
+      setRecipeFileName(resolvedFileName);
+
       setVideoUrl(productToEdit.videoUrl || '');
-      setActive(productToEdit.active);
+      setActive(productToEdit.active ?? true);
       setRecipeItems(productToEdit.recipe ? [...productToEdit.recipe] : []);
+
+      // Auto-recuperación de seguridad: Si falta receta, video o foto, revisar si ya existen en Storage
+      if (productToEdit.code && (!productToEdit.recipeFileUrl || !productToEdit.videoUrl || !productToEdit.imageUrl)) {
+        storageService.getProductionFiles(productToEdit.code).then((files) => {
+          if (files.recipeFileUrl) {
+            setRecipeFileUrl((prev) => prev || files.recipeFileUrl!);
+            setRecipeFileName((prev) => prev || files.recipeFileName || 'Ficha Técnica de Receta');
+          }
+          if (files.videoUrl) {
+            setVideoUrl((prev) => prev || files.videoUrl!);
+          }
+          if (files.imageUrl) {
+            setImageUrl((prev) => prev || files.imageUrl!);
+          }
+        });
+      }
     } else {
       // Nueva producción
-      setCode(`PRD-${Math.floor(100 + Math.random() * 900)}`);
+      setCode(`PROD-${Math.floor(100 + Math.random() * 900)}`);
       setName('');
-      setCategory(CATEGORIES_DEFAULT[0]);
-      setSubcategory(SUBCATEGORIES_DEFAULT[CATEGORIES_DEFAULT[0]][0]);
-      setUnit(UNITS_DEFAULT[0]);
-      setWarehouse(WAREHOUSES_DEFAULT[0]);
+      const defaultCat = productionCategories.find((c) => c.active)?.name || 'Producciones cárnicas';
+      const defaultSub = productionSubcategories.find((s) => s.active)?.name || 'General';
+      const defaultUnit = productionUnits.find((u) => u.active)?.name || 'kg';
+      const defaultWh = productionWarehouses.find((w) => w.active)?.name || 'Freezer Producción';
+      setCategory(defaultCat);
+      setSubcategory(defaultSub);
+      setUnit(defaultUnit);
+      setWarehouse(defaultWh);
       setDescription('');
       setImageUrl('');
       setRecipeFileUrl('');
@@ -127,17 +179,181 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
     setFormError('');
     setSelectedItemId('');
     setNewQuantity('1');
-  }, [isOpen, productToEdit]);
+  }, [isOpen, productToEdit, productionCategories, productionSubcategories, productionUnits, productionWarehouses]);
 
-  // Manejar cambio de categoría para actualizar subcategorías
-  const handleCategoryChange = (newCat: string) => {
-    setCategory(newCat);
-    const subcats = SUBCATEGORIES_DEFAULT[newCat];
-    if (subcats && subcats.length > 0) {
-      setSubcategory(subcats[0]);
-    } else {
-      setSubcategory('General');
+  // Manejo de Subida de Foto a Storage
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!code.trim()) {
+      showToast('Por favor asigna un Código de Producción antes de subir la foto.', 'warning');
+      return;
     }
+
+    setUploadingImage(true);
+    try {
+      if (imageUrl && storageService.extractPathFromUrl(imageUrl)) {
+        await storageService.deleteProductMedia(imageUrl);
+      }
+
+      const res = await storageService.uploadProductionMedia(code.trim(), 'foto', file);
+      if (res) {
+        setImageUrl(res.url);
+
+        if (productToEdit?.id) {
+          await supabase
+            .from('production_products')
+            .update({ image_url: res.url, updated_at: new Date().toISOString() })
+            .eq('id', productToEdit.id);
+        }
+
+        showToast('Foto subida exitosamente a Supabase Storage.', 'success');
+      } else {
+        showToast('Error al subir la foto a Supabase Storage.', 'error');
+      }
+    } catch (err: any) {
+      showToast('Error al subir foto: ' + (err.message || ''), 'error');
+    } finally {
+      setUploadingImage(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveImage = async () => {
+    if (imageUrl && storageService.extractPathFromUrl(imageUrl)) {
+      await storageService.deleteProductMedia(imageUrl);
+    }
+    setImageUrl('');
+    if (productToEdit?.id) {
+      await supabase
+        .from('production_products')
+        .update({ image_url: null, updated_at: new Date().toISOString() })
+        .eq('id', productToEdit.id);
+    }
+    showToast('Foto quitada de Storage.', 'info');
+  };
+
+  // Manejo de Subida de Archivo de Receta a Storage
+  const handleRecipeFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!code.trim()) {
+      showToast('Por favor asigna un Código de Producción antes de subir el archivo.', 'warning');
+      return;
+    }
+
+    setUploadingRecipe(true);
+    try {
+      if (recipeFileUrl && storageService.extractPathFromUrl(recipeFileUrl)) {
+        await storageService.deleteProductMedia(recipeFileUrl);
+      }
+
+      const res = await storageService.uploadProductionMedia(code.trim(), 'receta', file);
+      if (res) {
+        setRecipeFileUrl(res.url);
+        setRecipeFileName(res.name);
+
+        if (productToEdit?.id) {
+          await supabase
+            .from('production_products')
+            .update({
+              recipe_file_url: res.url,
+              recipe_file_name: res.name,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', productToEdit.id);
+        }
+
+        showToast('Archivo de receta subido a Supabase Storage.', 'success');
+      } else {
+        showToast('Error al subir archivo de receta.', 'error');
+      }
+    } catch (err: any) {
+      showToast('Error al subir receta: ' + (err.message || ''), 'error');
+    } finally {
+      setUploadingRecipe(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveRecipeFile = async () => {
+    if (recipeFileUrl && storageService.extractPathFromUrl(recipeFileUrl)) {
+      await storageService.deleteProductMedia(recipeFileUrl);
+    }
+    setRecipeFileUrl('');
+    setRecipeFileName('');
+    if (productToEdit?.id) {
+      await supabase
+        .from('production_products')
+        .update({
+          recipe_file_url: null,
+          recipe_file_name: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', productToEdit.id);
+    }
+    showToast('Archivo de receta quitado.', 'info');
+  };
+
+  // Manejo de Subida de Video a Storage
+  const handleVideoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!code.trim()) {
+      showToast('Por favor asigna un Código de Producción antes de subir el video.', 'warning');
+      return;
+    }
+
+    setUploadingVideo(true);
+    try {
+      if (videoUrl && storageService.extractPathFromUrl(videoUrl)) {
+        await storageService.deleteProductMedia(videoUrl);
+      }
+
+      const res = await storageService.uploadProductionMedia(code.trim(), 'video', file);
+      if (res) {
+        setVideoUrl(res.url);
+
+        if (productToEdit?.id) {
+          await supabase
+            .from('production_products')
+            .update({
+              video_url: res.url,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', productToEdit.id);
+        }
+
+        showToast('Video subido exitosamente a Supabase Storage.', 'success');
+      } else {
+        showToast('Error al subir el video a Supabase Storage.', 'error');
+      }
+    } catch (err: any) {
+      showToast('Error al subir video: ' + (err.message || ''), 'error');
+    } finally {
+      setUploadingVideo(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleRemoveVideo = async () => {
+    if (videoUrl && storageService.extractPathFromUrl(videoUrl)) {
+      await storageService.deleteProductMedia(videoUrl);
+    }
+    setVideoUrl('');
+    if (productToEdit?.id) {
+      await supabase
+        .from('production_products')
+        .update({
+          video_url: null,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', productToEdit.id);
+    }
+    showToast('Video quitado.', 'info');
   };
 
   // Costo total calculado sumando subtotales de insumos
@@ -323,59 +539,176 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
               </div>
             </div>
 
+            {/* Categoría, Subcategoría, Unidad y Almacén con Botón Gestionar */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-              <FormField label="Categoría" required>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Categoría <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setConfigModalType('category')}
+                    className="text-[11px] text-amber-600 hover:text-amber-800 font-bold flex items-center gap-1 transition"
+                    title="Configurar Categorías de Producción"
+                  >
+                    <Settings className="w-3 h-3" />
+                    <span>Gestionar</span>
+                  </button>
+                </div>
                 <SelectInput
                   value={category}
-                  onChange={(e) => handleCategoryChange(e.target.value)}
-                  options={CATEGORIES_DEFAULT.map((c) => ({ value: c, label: c }))}
+                  onChange={(e) => setCategory(e.target.value)}
+                  options={productionCategories.filter((c) => c.active).map((c) => ({ value: c.name, label: c.name }))}
                 />
-              </FormField>
+              </div>
 
-              <FormField label="Subcategoría" required>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Subcategoría
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setConfigModalType('subcategory')}
+                    className="text-[11px] text-amber-600 hover:text-amber-800 font-bold flex items-center gap-1 transition"
+                    title="Configurar Subcategorías de Producción"
+                  >
+                    <Settings className="w-3 h-3" />
+                    <span>Gestionar</span>
+                  </button>
+                </div>
                 <SelectInput
                   value={subcategory}
                   onChange={(e) => setSubcategory(e.target.value)}
-                  options={(SUBCATEGORIES_DEFAULT[category] || ['General']).map((s) => ({
-                    value: s,
-                    label: s,
-                  }))}
+                  options={productionSubcategories.filter((s) => s.active).map((s) => ({ value: s.name, label: s.name }))}
                 />
-              </FormField>
+              </div>
 
-              <FormField label="Unidad de Medida" required hint="Unidad elaborada">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Unidad Medida <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setConfigModalType('unit')}
+                    className="text-[11px] text-amber-600 hover:text-amber-800 font-bold flex items-center gap-1 transition"
+                    title="Configurar Unidades de Medida"
+                  >
+                    <Settings className="w-3 h-3" />
+                    <span>Gestionar</span>
+                  </button>
+                </div>
                 <SelectInput
                   value={unit}
                   onChange={(e) => setUnit(e.target.value)}
-                  options={UNITS_DEFAULT.map((u) => ({ value: u, label: u }))}
+                  options={productionUnits.filter((u) => u.active).map((u) => ({ value: u.name, label: u.name }))}
                 />
-              </FormField>
+              </div>
 
-              <FormField label="Almacén de Guardado" required hint="Depósito o freezer">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    Almacén Guarda <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setConfigModalType('warehouse')}
+                    className="text-[11px] text-amber-600 hover:text-amber-800 font-bold flex items-center gap-1 transition"
+                    title="Configurar Almacenes de Guardado"
+                  >
+                    <Settings className="w-3 h-3" />
+                    <span>Gestionar</span>
+                  </button>
+                </div>
                 <SelectInput
                   value={warehouse}
                   onChange={(e) => setWarehouse(e.target.value)}
-                  options={WAREHOUSES_DEFAULT.map((w) => ({ value: w, label: w }))}
+                  options={productionWarehouses.filter((w) => w.active).map((w) => ({ value: w.name, label: w.name }))}
                 />
-              </FormField>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label="URL de Foto de la Preparación (Opcional)" hint="Enlace directo a imagen para referencia visual">
-                <TextInput
-                  value={imageUrl}
-                  onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="https://ejemplo.com/fotos/preparacion.jpg"
-                />
-              </FormField>
+            <FormField label="Descripción o Notas Internas (Opcional)" hint="Rendimiento estimado, indicaciones técnicas o especificación de cocción">
+              <TextInput
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Ej: Rendimiento aprox. 10 porciones de 120g. Mantener a -18°C..."
+              />
+            </FormField>
 
-              <FormField label="Descripción o Notas Internas (Opcional)" hint="Rendimiento estimado o especificación">
-                <TextInput
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Ej: Rendimiento aprox. 10 unidades de 120g..."
-                />
-              </FormField>
+            {/* Subida de Foto de la Preparación a Storage */}
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                <span>Foto de la Preparación</span>
+                <span className="text-[10px] text-slate-400 font-normal">
+                  Ventas/Producciones/{code || '[código]'}/foto_...
+                </span>
+              </label>
+
+              {imageUrl ? (
+                <div className="relative group rounded-2xl overflow-hidden border border-slate-200 bg-slate-900/5 aspect-video sm:aspect-21/9 max-h-52 flex items-center justify-center">
+                  <img
+                    src={imageUrl}
+                    alt="Foto de la preparación"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-slate-900/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                    <label className="cursor-pointer px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-800 rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 transition">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Reemplazar Foto</span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        onChange={handleImageUpload}
+                        disabled={uploadingImage}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleRemoveImage}
+                      className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold shadow-lg flex items-center gap-1.5 transition"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Quitar</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label className={`border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition ${
+                  uploadingImage
+                    ? 'border-amber-400 bg-amber-50/40'
+                    : 'border-slate-300 hover:border-amber-500 hover:bg-slate-50'
+                }`}>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    className="hidden"
+                    onChange={handleImageUpload}
+                    disabled={uploadingImage}
+                  />
+                  {uploadingImage ? (
+                    <div className="flex flex-col items-center gap-2 text-amber-600 py-2">
+                      <Loader2 className="w-7 h-7 animate-spin" />
+                      <span className="text-xs font-bold">Subiendo foto a Supabase Storage...</span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-slate-500 text-center py-2">
+                      <div className="w-10 h-10 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-600 mb-1">
+                        <Image className="w-5 h-5" />
+                      </div>
+                      <span className="text-xs font-bold text-slate-800">
+                        Selecciona o arrastra una foto de la preparación
+                      </span>
+                      <span className="text-[11px] text-slate-400">
+                        Formatos: JPG, PNG o WebP (Se elimina la anterior automáticamente al editar)
+                      </span>
+                    </div>
+                  )}
+                </label>
+              )}
             </div>
           </div>
 
@@ -422,13 +755,14 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                       { value: '', label: '-- Selecciona un insumo --' },
                       ...activeItems.map((i) => ({
                         value: i.id,
-                        label: `${i.name} (${i.storageUnit}) - Costo: $${(Number(i.currentPrice) || 0).toLocaleString('es-AR')}`,
+                        label: `${i.name} (${i.storageUnit}) - Costo: ${(Number(i.currentPrice) || 0).toLocaleString('es-AR')}`,
                       })),
                     ]}
+                    className="h-10"
                   />
                 </div>
 
-                <div className="sm:col-span-3">
+                <div className="sm:col-span-2">
                   <label className="block text-[11px] font-bold text-slate-600 mb-1">
                     Cantidad {selectedItemObj ? `(${selectedItemObj.storageUnit})` : ''}
                   </label>
@@ -439,17 +773,18 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                     value={newQuantity}
                     onChange={(e) => setNewQuantity(e.target.value)}
                     placeholder="Ej: 0.200"
+                    className="h-10"
                   />
                 </div>
 
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-3">
                   <Button
                     type="button"
                     variant="primary"
                     onClick={handleAddRecipeItem}
-                    className="w-full"
+                    leftIcon={<Plus className="w-4 h-4 shrink-0" />}
+                    className="w-full h-10 whitespace-nowrap font-bold text-xs md:text-sm px-3 flex items-center justify-center shadow-xs"
                   >
-                    <Plus className="w-4 h-4 mr-1" />
                     Añadir
                   </Button>
                 </div>
@@ -549,50 +884,213 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                       : 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100'
                   }`}
                 >
-                  <span>{active ? '● Producción Activa' : '○ Producción Pausada / Inactiva'}</span>
+                  <span>{active ? '✓ Producción Activa' : '✕ Producción Pausada / Inactiva'}</span>
                   <span className="text-[10px] uppercase underline">Hacer clic para cambiar</span>
                 </button>
               </div>
             </div>
           </div>
 
-          {/* 4. Recursos de Cocina & Capacitación (PDF y Video) */}
-          <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-3">
+          {/* 4. Recursos de Cocina & Capacitación (Receta / Archivo y Video en Storage) */}
+          <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <FileText className="w-4 h-4 text-indigo-600" />
                 Documentación de Elaboración & Capacitación
               </h4>
               <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full font-bold border border-indigo-200">
-                Paso a Paso & Video
+                Paso a Paso & Video en Storage
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <FormField label="URL Ficha Técnica / Receta (PDF)" hint="Enlace a archivo en Google Drive o servidor web">
-                <TextInput
-                  value={recipeFileUrl}
-                  onChange={(e) => setRecipeFileUrl(e.target.value)}
-                  placeholder="https://ejemplo.com/fichas/receta_milanesa.pdf"
-                />
-              </FormField>
+            {/* Subida de Archivo de Receta / Ficha Técnica */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                <span>Ficha Técnica / Archivo de Receta</span>
+                <span className="text-[10px] text-slate-400 font-normal">
+                  Ventas/Producciones/{code || '[código]'}/receta_...
+                </span>
+              </label>
 
-              <FormField label="Nombre Descriptivo del Archivo" hint="Ej: Receta_Milanesa.pdf">
-                <TextInput
-                  value={recipeFileName}
-                  onChange={(e) => setRecipeFileName(e.target.value)}
-                  placeholder="Nombre de la ficha paso a paso..."
-                />
-              </FormField>
+              {recipeFileUrl ? (
+                <div className="flex items-center justify-between p-3.5 bg-white border border-slate-200 rounded-2xl shadow-xs">
+                  <div className="flex items-center gap-3 overflow-hidden">
+                    <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-800 truncate">
+                        {recipeFileName || getFileNameFromUrl(recipeFileUrl)}
+                      </p>
+                      <a
+                        href={recipeFileUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[11px] text-indigo-600 hover:text-indigo-800 hover:underline font-semibold flex items-center gap-1"
+                      >
+                        <span>Abrir / Descargar Ficha</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <label className="cursor-pointer px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1 transition">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Reemplazar</span>
+                      <input
+                        type="file"
+                        accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg"
+                        className="hidden"
+                        onChange={handleRecipeFileUpload}
+                        disabled={uploadingRecipe}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleRemoveRecipeFile}
+                      className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                      title="Eliminar archivo de Storage"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <label className={`border-2 border-dashed rounded-2xl p-4 flex flex-col items-center justify-center cursor-pointer transition ${
+                  uploadingRecipe
+                    ? 'border-indigo-400 bg-indigo-50/30'
+                    : 'border-slate-300 hover:border-indigo-400 hover:bg-slate-50'
+                }`}>
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg"
+                    className="hidden"
+                    onChange={handleRecipeFileUpload}
+                    disabled={uploadingRecipe}
+                  />
+                  {uploadingRecipe ? (
+                    <div className="flex items-center gap-2 text-indigo-600 py-1">
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span className="text-xs font-bold">Subiendo archivo a Storage...</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-slate-600 py-1">
+                      <FileUp className="w-5 h-5 text-indigo-600" />
+                      <span className="text-xs font-bold">Subir archivo de receta (PDF / Documento)</span>
+                      <span className="text-[10px] text-slate-400">(Ventas/Producciones/{code || '[código]'})</span>
+                    </div>
+                  )}
+                </label>
+              )}
             </div>
 
-            <FormField label="URL Video de Preparación (YouTube o Vimeo)" hint="Enlace al video demostrativo para cocina">
-              <TextInput
-                value={videoUrl}
-                onChange={(e) => setVideoUrl(e.target.value)}
-                placeholder="https://youtu.be/xxxxxxx"
-              />
-            </FormField>
+            {/* Subida de Video a Storage */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                <span>Video de Preparación / Capacitación</span>
+                <span className="text-[10px] text-slate-400 font-normal">MP4, WebM, MOV o enlace externo</span>
+              </label>
+
+              {videoUrl ? (
+                <div className="bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 shadow-md">
+                  {/* Si es video embebible (YouTube / Vimeo) */}
+                  {getEmbedVideoUrl(videoUrl) ? (
+                    <div className="relative aspect-video w-full bg-black">
+                      <iframe
+                        src={getEmbedVideoUrl(videoUrl)!}
+                        title="Video de Preparación"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        className="w-full h-full border-0"
+                      />
+                    </div>
+                  ) : (
+                    <div className="relative aspect-video w-full bg-black flex items-center justify-center">
+                      <video
+                        src={videoUrl}
+                        controls
+                        className="w-full h-full object-contain"
+                      >
+                        Tu navegador no soporta el reproductor de video.
+                      </video>
+                    </div>
+                  )}
+
+                  <div className="p-3 bg-slate-800 flex items-center justify-between text-xs text-slate-300">
+                    <span className="truncate max-w-xs text-[11px] font-mono text-slate-400">
+                      {videoUrl}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <label className="cursor-pointer px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold flex items-center gap-1 transition">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Reemplazar Video</span>
+                        <input
+                          type="file"
+                          accept="video/mp4,video/webm,video/quicktime,video/*"
+                          className="hidden"
+                          onChange={handleVideoUpload}
+                          disabled={uploadingVideo}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={handleRemoveVideo}
+                        className="p-1.5 text-rose-400 hover:text-white hover:bg-rose-600/80 rounded-xl transition"
+                        title="Quitar video"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <label className={`border-2 border-dashed rounded-2xl p-5 flex flex-col items-center justify-center cursor-pointer transition ${
+                    uploadingVideo
+                      ? 'border-indigo-400 bg-indigo-50/30'
+                      : 'border-slate-300 hover:border-indigo-400 hover:bg-slate-50'
+                  }`}>
+                    <input
+                      type="file"
+                      accept="video/mp4,video/webm,video/quicktime,video/*"
+                      className="hidden"
+                      onChange={handleVideoUpload}
+                      disabled={uploadingVideo}
+                    />
+                    {uploadingVideo ? (
+                      <div className="flex flex-col items-center gap-2 text-indigo-600 py-2">
+                        <Loader2 className="w-7 h-7 animate-spin" />
+                        <span className="text-xs font-bold">Subiendo video a Supabase Storage...</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-slate-500 text-center py-2">
+                        <div className="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 mb-1">
+                          <Film className="w-5 h-5" />
+                        </div>
+                        <span className="text-xs font-bold text-slate-800">
+                          Subir archivo de video a Storage
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          MP4, WebM o MOV (Ventas/Producciones/{code || '[código]'})
+                        </span>
+                      </div>
+                    )}
+                  </label>
+
+                  {/* Alternativa: Ingresar enlace externo si no se quiere subir archivo */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-slate-400 font-bold uppercase shrink-0">O ingresar URL externa:</span>
+                    <TextInput
+                      value={videoUrl}
+                      onChange={(e) => setVideoUrl(e.target.value)}
+                      placeholder="https://youtu.be/xxxxxx o enlace web..."
+                      className="text-xs"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </form>
 
@@ -616,6 +1114,34 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
           </Button>
         </div>
       </div>
+
+      {/* Modal de Configuración Dinámica para Categorías, Subcategorías, Unidades y Almacenes */}
+      {configModalType && (
+        <ConfigManagerModal
+          title={
+            configModalType === 'category' ? 'Categorías de Producción' :
+            configModalType === 'subcategory' ? 'Subcategorías de Producción' :
+            configModalType === 'unit' ? 'Unidades de Medida' : 'Almacenes de Guardado'
+          }
+          options={
+            configModalType === 'category' ? productionCategories :
+            configModalType === 'subcategory' ? productionSubcategories :
+            configModalType === 'unit' ? productionUnits : productionWarehouses
+          }
+          onClose={() => setConfigModalType(null)}
+          onUpdate={(newOpts) => {
+            if (configModalType === 'category') {
+              setProductionCategories(newOpts);
+            } else if (configModalType === 'subcategory') {
+              setProductionSubcategories(newOpts);
+            } else if (configModalType === 'unit') {
+              setProductionUnits(newOpts);
+            } else {
+              setProductionWarehouses(newOpts);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

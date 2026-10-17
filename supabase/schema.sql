@@ -651,3 +651,82 @@ DROP POLICY IF EXISTS "Permitir acceso publico sale_product_recipes" ON public.s
 CREATE POLICY "Permitir acceso publico sale_product_recipes"
     ON public.sale_product_recipes FOR ALL USING (true) WITH CHECK (true);
 
+
+
+-- --------------------------------------------------------------------
+-- ACTUALIZACIÓN: OPCIONES DE CONFIGURACIÓN Y POLÍTICAS DE PRODUCCIÓN
+-- --------------------------------------------------------------------
+
+-- Asegurar columnas de producción
+ALTER TABLE public.production_products 
+  ADD COLUMN IF NOT EXISTS image_url TEXT,
+  ADD COLUMN IF NOT EXISTS recipe_file_url TEXT,
+  ADD COLUMN IF NOT EXISTS recipe_file_name TEXT,
+  ADD COLUMN IF NOT EXISTS video_url TEXT,
+  ADD COLUMN IF NOT EXISTS warehouse TEXT DEFAULT 'Freezer Producción',
+  ADD COLUMN IF NOT EXISTS subcategory TEXT DEFAULT 'General';
+
+CREATE INDEX IF NOT EXISTS idx_prod_products_warehouse ON public.production_products(warehouse);
+CREATE INDEX IF NOT EXISTS idx_prod_products_subcategory ON public.production_products(subcategory);
+
+-- Categorías de Producción
+INSERT INTO public.config_options (type, name, active)
+VALUES
+  ('production_category', 'Producciones cárnicas', true),
+  ('production_category', 'Panadería', true),
+  ('production_category', 'Salsas', true),
+  ('production_category', 'Guarniciones', true),
+  ('production_category', 'Pastas', true),
+  ('production_category', 'Cafetería & Barra', true),
+  ('production_category', 'Postres & Dulces', true),
+  ('production_category', 'Varios', true)
+ON CONFLICT DO NOTHING;
+
+-- Subcategorías de Producción
+INSERT INTO public.config_options (type, name, active)
+VALUES
+  ('production_subcategory', 'Milanesas', true),
+  ('production_subcategory', 'Hamburguesas', true),
+  ('production_subcategory', 'Carnes Braseadas', true),
+  ('production_subcategory', 'Pollo', true),
+  ('production_subcategory', 'Pescados', true),
+  ('production_subcategory', 'Pizzas', true),
+  ('production_subcategory', 'Panes Brioche', true),
+  ('production_subcategory', 'Focaccias', true),
+  ('production_subcategory', 'Salsas Caseras', true),
+  ('production_subcategory', 'Emulsiones & Mayonesas', true),
+  ('production_subcategory', 'Reducciones & Fondos', true),
+  ('production_subcategory', 'Papas & Fritos', true),
+  ('production_subcategory', 'Verduras Cocidas', true),
+  ('production_subcategory', 'Purés', true),
+  ('production_subcategory', 'Ensaladas', true),
+  ('production_subcategory', 'Pastas Rellenas', true),
+  ('production_subcategory', 'Pastas Largas', true),
+  ('production_subcategory', 'Ñoquis', true),
+  ('production_subcategory', 'Jarabes & Almíbares', true),
+  ('production_subcategory', 'Infusiones', true),
+  ('production_subcategory', 'Tortas', true),
+  ('production_subcategory', 'General', true)
+ON CONFLICT DO NOTHING;
+
+-- Unidades de Medida para Producción
+INSERT INTO public.config_options (type, name, active)
+VALUES
+  ('production_unit', 'kg', true),
+  ('production_unit', 'u', true),
+  ('production_unit', 'lt', true),
+  ('production_unit', 'g', true),
+  ('production_unit', 'ml', true),
+  ('production_unit', 'porción', true)
+ON CONFLICT DO NOTHING;
+
+-- Almacenes de Guardado para Producción
+INSERT INTO public.config_options (type, name, active)
+VALUES
+  ('production_warehouse', 'Freezer Producción', true),
+  ('production_warehouse', 'Cámara Fría', true),
+  ('production_warehouse', 'Depósito Seco', true),
+  ('production_warehouse', 'Cocina Principal', true),
+  ('production_warehouse', 'Barra', true),
+  ('production_warehouse', 'Almacén General', true)
+ON CONFLICT DO NOTHING;

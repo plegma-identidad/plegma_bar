@@ -645,6 +645,16 @@ export const ProductionsView: React.FC = () => {
 
             {/* Contenido del Detalle */}
             <div className="p-5 overflow-y-auto space-y-5 text-xs flex-1">
+              {/* Foto de la Preparación si existe */}
+              {detailProduct.imageUrl && (
+                <div className="rounded-2xl overflow-hidden border border-slate-200 aspect-video max-h-48 bg-slate-100 flex items-center justify-center shadow-xs">
+                  <img
+                    src={detailProduct.imageUrl}
+                    alt={detailProduct.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              )}
               {/* Resumen Financiero y Unidad */}
               <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
                 <div>

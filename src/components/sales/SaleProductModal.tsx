@@ -876,7 +876,7 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
                   <div className="sm:col-span-3">
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                      Tipo de Origen
+                      Tipo de Componente
                     </label>
                     <SelectInput
                       value={newComponentType}
@@ -888,10 +888,11 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
                         { value: 'INSUMO', label: 'Insumo (Inventario)' },
                         { value: 'PRODUCCION', label: 'Producción (Semielaborado)' },
                       ]}
+                      className="h-10"
                     />
                   </div>
 
-                  <div className="sm:col-span-5">
+                  <div className="sm:col-span-4">
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">
                       Seleccionar Componente
                     </label>
@@ -905,6 +906,7 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
                           label: o.label,
                         })),
                       ]}
+                      className="h-10"
                     />
                   </div>
 
@@ -919,17 +921,18 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
                       value={newQuantity}
                       onChange={(e) => setNewQuantity(e.target.value)}
                       placeholder="Ej: 0.25"
+                      className="h-10"
                     />
                   </div>
 
-                  <div className="sm:col-span-2">
+                  <div className="sm:col-span-3">
                     <Button
                       type="button"
                       variant="primary"
                       onClick={handleAddComponent}
-                      className="w-full"
+                      leftIcon={<Plus className="w-4 h-4 shrink-0" />}
+                      className="w-full h-10 whitespace-nowrap font-bold text-xs md:text-sm px-3 flex items-center justify-center shadow-xs"
                     >
-                      <Plus className="w-4 h-4 mr-1" />
                       Añadir
                     </Button>
                   </div>

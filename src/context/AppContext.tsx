@@ -282,6 +282,20 @@ interface AppContextType {
   saveSaleCategories: (action: React.SetStateAction<ConfigOption[]>) => Promise<void>;
   saveSaleSubcategories: (action: React.SetStateAction<ConfigOption[]>) => Promise<void>;
 
+  // Opciones Configurables de Producción
+  productionCategories: ConfigOption[];
+  productionSubcategories: ConfigOption[];
+  productionUnits: ConfigOption[];
+  productionWarehouses: ConfigOption[];
+  setProductionCategories: React.Dispatch<React.SetStateAction<ConfigOption[]>>;
+  setProductionSubcategories: React.Dispatch<React.SetStateAction<ConfigOption[]>>;
+  setProductionUnits: React.Dispatch<React.SetStateAction<ConfigOption[]>>;
+  setProductionWarehouses: React.Dispatch<React.SetStateAction<ConfigOption[]>>;
+  saveProductionCategories: (action: React.SetStateAction<ConfigOption[]>) => Promise<void>;
+  saveProductionSubcategories: (action: React.SetStateAction<ConfigOption[]>) => Promise<void>;
+  saveProductionUnits: (action: React.SetStateAction<ConfigOption[]>) => Promise<void>;
+  saveProductionWarehouses: (action: React.SetStateAction<ConfigOption[]>) => Promise<void>;
+
   // Cuentas Corrientes State
   ccMovements: CurrentAccountMovement[];
   setCcMovements: React.Dispatch<React.SetStateAction<CurrentAccountMovement[]>>;
@@ -386,6 +400,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [itemUnits, setItemUnits] = useState<ConfigOption[]>([]);
   const [saleCategories, setSaleCategories] = useState<ConfigOption[]>([]);
   const [saleSubcategories, setSaleSubcategories] = useState<ConfigOption[]>([]);
+  const [productionCategories, setProductionCategories] = useState<ConfigOption[]>([]);
+  const [productionSubcategories, setProductionSubcategories] = useState<ConfigOption[]>([]);
+  const [productionUnits, setProductionUnits] = useState<ConfigOption[]>([]);
+  const [productionWarehouses, setProductionWarehouses] = useState<ConfigOption[]>([]);
 
   // Limpiar localStorage legado de opciones de configuración, proveedores, clientes, insumos, empleados, usuarios, comandas, caja, CC y consumos
   useEffect(() => {
@@ -415,7 +433,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const fetchInitialDataFromSupabase = async () => {
       try {
-        const [cats, subcats, units, saleCats, saleSubc, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts] = await Promise.all([
+        const [cats, subcats, units, saleCats, saleSubc, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts, prodCats, prodSubc, prodUnits, prodWh] = await Promise.all([
           configService.getByType('category'),
           configService.getByType('subcategory'),
           configService.getByType('unit'),
@@ -438,6 +456,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           auditLogsService.getAll(),
           saleProductsService.getAll(),
           productionsService.getAll(),
+          configService.getByType('production_category'),
+          configService.getByType('production_subcategory'),
+          configService.getByType('production_unit'),
+          configService.getByType('production_warehouse'),
         ]);
         setItemCategories(cats);
         setItemSubcategories(subcats);
@@ -463,6 +485,57 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           { id: 'ssub-7', name: 'Tragos & Coctelería', active: true },
           { id: 'ssub-8', name: 'Vinos', active: true },
           { id: 'ssub-9', name: 'General', active: true },
+        ]);
+
+        setProductionCategories(prodCats && prodCats.length > 0 ? prodCats : [
+          { id: 'pcat-1', name: 'Producciones cárnicas', active: true },
+          { id: 'pcat-2', name: 'Panadería', active: true },
+          { id: 'pcat-3', name: 'Salsas', active: true },
+          { id: 'pcat-4', name: 'Guarniciones', active: true },
+          { id: 'pcat-5', name: 'Pastas', active: true },
+          { id: 'pcat-6', name: 'Cafetería & Barra', active: true },
+          { id: 'pcat-7', name: 'Postres & Dulces', active: true },
+          { id: 'pcat-8', name: 'Varios', active: true },
+        ]);
+        setProductionSubcategories(prodSubc && prodSubc.length > 0 ? prodSubc : [
+          { id: 'psub-1', name: 'Milanesas', active: true },
+          { id: 'psub-2', name: 'Hamburguesas', active: true },
+          { id: 'psub-3', name: 'Carnes Braseadas', active: true },
+          { id: 'psub-4', name: 'Pollo', active: true },
+          { id: 'psub-5', name: 'Pescados', active: true },
+          { id: 'psub-6', name: 'Pizzas', active: true },
+          { id: 'psub-7', name: 'Panes Brioche', active: true },
+          { id: 'psub-8', name: 'Focaccias', active: true },
+          { id: 'psub-9', name: 'Salsas Caseras', active: true },
+          { id: 'psub-10', name: 'Emulsiones & Mayonesas', active: true },
+          { id: 'psub-11', name: 'Reducciones & Fondos', active: true },
+          { id: 'psub-12', name: 'Papas & Fritos', active: true },
+          { id: 'psub-13', name: 'Verduras Cocidas', active: true },
+          { id: 'psub-14', name: 'Purés', active: true },
+          { id: 'psub-15', name: 'Ensaladas', active: true },
+          { id: 'psub-16', name: 'Pastas Rellenas', active: true },
+          { id: 'psub-17', name: 'Pastas Largas', active: true },
+          { id: 'psub-18', name: 'Ñoquis', active: true },
+          { id: 'psub-19', name: 'Jarabes & Almíbares', active: true },
+          { id: 'psub-20', name: 'Infusiones', active: true },
+          { id: 'psub-21', name: 'Tortas', active: true },
+          { id: 'psub-22', name: 'General', active: true },
+        ]);
+        setProductionUnits(prodUnits && prodUnits.length > 0 ? prodUnits : [
+          { id: 'punit-1', name: 'kg', active: true },
+          { id: 'punit-2', name: 'u', active: true },
+          { id: 'punit-3', name: 'lt', active: true },
+          { id: 'punit-4', name: 'g', active: true },
+          { id: 'punit-5', name: 'ml', active: true },
+          { id: 'punit-6', name: 'porción', active: true },
+        ]);
+        setProductionWarehouses(prodWh && prodWh.length > 0 ? prodWh : [
+          { id: 'pwh-1', name: 'Freezer Producción', active: true },
+          { id: 'pwh-2', name: 'Cámara Fría', active: true },
+          { id: 'pwh-3', name: 'Depósito Seco', active: true },
+          { id: 'pwh-4', name: 'Cocina Principal', active: true },
+          { id: 'pwh-5', name: 'Barra', active: true },
+          { id: 'pwh-6', name: 'Almacén General', active: true },
         ]);
         setProviders(provs);
         setItems(fetchedItems);
@@ -654,6 +727,138 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+
+  const saveProductionCategories = async (action: React.SetStateAction<ConfigOption[]>) => {
+    const prev = productionCategories;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setProductionCategories(next);
+
+    try {
+      const prevMap = new Map<string, ConfigOption>(prev.map((o) => [o.id, o]));
+      const nextIds = new Set(next.map((o) => o.id));
+
+      for (const p of prev) {
+        if (!nextIds.has(p.id) && !p.id.startsWith('opt-') && !p.id.startsWith('pcat-')) {
+          await configService.delete(p.id);
+        }
+      }
+
+      for (const item of next) {
+        if (item.id.startsWith('opt-') || item.id.startsWith('pcat-')) {
+          await configService.create('production_category', item.name, item.active);
+        } else if (prevMap.has(item.id)) {
+          const old = prevMap.get(item.id)!;
+          if (old.name !== item.name || old.active !== item.active) {
+            await configService.update(item.id, { name: item.name, active: item.active });
+          }
+        }
+      }
+
+      const fresh = await configService.getByType('production_category');
+      if (fresh.length > 0) setProductionCategories(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar categorías de producción con Supabase:', e);
+    }
+  };
+
+  const saveProductionSubcategories = async (action: React.SetStateAction<ConfigOption[]>) => {
+    const prev = productionSubcategories;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setProductionSubcategories(next);
+
+    try {
+      const prevMap = new Map<string, ConfigOption>(prev.map((o) => [o.id, o]));
+      const nextIds = new Set(next.map((o) => o.id));
+
+      for (const p of prev) {
+        if (!nextIds.has(p.id) && !p.id.startsWith('opt-') && !p.id.startsWith('psub-')) {
+          await configService.delete(p.id);
+        }
+      }
+
+      for (const item of next) {
+        if (item.id.startsWith('opt-') || item.id.startsWith('psub-')) {
+          await configService.create('production_subcategory', item.name, item.active);
+        } else if (prevMap.has(item.id)) {
+          const old = prevMap.get(item.id)!;
+          if (old.name !== item.name || old.active !== item.active) {
+            await configService.update(item.id, { name: item.name, active: item.active });
+          }
+        }
+      }
+
+      const fresh = await configService.getByType('production_subcategory');
+      if (fresh.length > 0) setProductionSubcategories(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar subcategorías de producción con Supabase:', e);
+    }
+  };
+
+  const saveProductionUnits = async (action: React.SetStateAction<ConfigOption[]>) => {
+    const prev = productionUnits;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setProductionUnits(next);
+
+    try {
+      const prevMap = new Map<string, ConfigOption>(prev.map((o) => [o.id, o]));
+      const nextIds = new Set(next.map((o) => o.id));
+
+      for (const p of prev) {
+        if (!nextIds.has(p.id) && !p.id.startsWith('opt-') && !p.id.startsWith('punit-')) {
+          await configService.delete(p.id);
+        }
+      }
+
+      for (const item of next) {
+        if (item.id.startsWith('opt-') || item.id.startsWith('punit-')) {
+          await configService.create('production_unit', item.name, item.active);
+        } else if (prevMap.has(item.id)) {
+          const old = prevMap.get(item.id)!;
+          if (old.name !== item.name || old.active !== item.active) {
+            await configService.update(item.id, { name: item.name, active: item.active });
+          }
+        }
+      }
+
+      const fresh = await configService.getByType('production_unit');
+      if (fresh.length > 0) setProductionUnits(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar unidades de producción con Supabase:', e);
+    }
+  };
+
+  const saveProductionWarehouses = async (action: React.SetStateAction<ConfigOption[]>) => {
+    const prev = productionWarehouses;
+    const next = typeof action === 'function' ? action(prev) : action;
+    setProductionWarehouses(next);
+
+    try {
+      const prevMap = new Map<string, ConfigOption>(prev.map((o) => [o.id, o]));
+      const nextIds = new Set(next.map((o) => o.id));
+
+      for (const p of prev) {
+        if (!nextIds.has(p.id) && !p.id.startsWith('opt-') && !p.id.startsWith('pwh-')) {
+          await configService.delete(p.id);
+        }
+      }
+
+      for (const item of next) {
+        if (item.id.startsWith('opt-') || item.id.startsWith('pwh-')) {
+          await configService.create('production_warehouse', item.name, item.active);
+        } else if (prevMap.has(item.id)) {
+          const old = prevMap.get(item.id)!;
+          if (old.name !== item.name || old.active !== item.active) {
+            await configService.update(item.id, { name: item.name, active: item.active });
+          }
+        }
+      }
+
+      const fresh = await configService.getByType('production_warehouse');
+      if (fresh.length > 0) setProductionWarehouses(fresh);
+    } catch (e) {
+      console.error('Error al sincronizar almacenes de producción con Supabase:', e);
+    }
+  };
 
   const addOrUpdateEmployee = async (emp: Employee) => {
     const saved = await employeesService.save(emp);
@@ -2350,8 +2555,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const deleteProductionProduct = async (productId: string): Promise<{ success: boolean; message: string }> => {
     try {
+      const targetProd = productionProducts.find((p) => p.id === productId);
       const ok = await productionsService.delete(productId);
       if (ok) {
+        if (targetProd?.code) {
+          // Eliminar físicamente los archivos de Storage correspondientes a esta producción
+          storageService.deleteProductionFolder(targetProd.code).catch((err) => {
+            console.warn('Error al limpiar archivos en Storage para producción eliminada:', err);
+          });
+        }
         setProductionProducts((prev) => prev.filter((p) => p.id !== productId));
         showToast('Producción eliminada correctamente.', 'success');
         return { success: true, message: 'Producción eliminada.' };
@@ -3614,6 +3826,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSaleSubcategories: saveSaleSubcategories as any,
         saveSaleCategories,
         saveSaleSubcategories,
+        productionCategories,
+        productionSubcategories,
+        productionUnits,
+        productionWarehouses,
+        setProductionCategories: saveProductionCategories as any,
+        setProductionSubcategories: saveProductionSubcategories as any,
+        setProductionUnits: saveProductionUnits as any,
+        setProductionWarehouses: saveProductionWarehouses as any,
+        saveProductionCategories,
+        saveProductionSubcategories,
+        saveProductionUnits,
+        saveProductionWarehouses,
         specialHoursPercentage,
         updateSpecialHoursPercentage,
         deleteClockRecord,

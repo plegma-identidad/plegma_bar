@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+﻿import { supabase } from '../lib/supabase';
 import { ConfigOption } from '../types';
 
 export type ConfigOptionType =
@@ -9,7 +9,11 @@ export type ConfigOptionType =
   | 'position'
   | 'profile'
   | 'sale_category'
-  | 'sale_subcategory';
+  | 'sale_subcategory'
+  | 'production_category'
+  | 'production_subcategory'
+  | 'production_unit'
+  | 'production_warehouse';
 
 export const configService = {
   /**
