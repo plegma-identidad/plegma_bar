@@ -9,6 +9,8 @@ import {
   ShoppingBag,
   Plus,
   Trash2,
+  Edit2,
+  Check,
   Percent,
   Layers,
   FileText,
@@ -28,6 +30,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { storageService } from '../../services/storageService';
 import { ConfigManagerModal } from '../ui/ConfigManagerModal';
+import { SearchableSelect } from '../ui/SearchableSelect';
 
 interface SaleProductModalProps {
   productToEdit?: SaleProduct | null;
@@ -137,6 +140,14 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
   // Fabricación (Receta / Escandallo)
   const [recipeComponents, setRecipeComponents] = useState<RecipeComponent[]>([]);
 
+  // Estados para edición en línea de un componente existente en la receta
+  const [editingCompId, setEditingCompId] = useState<string | null>(null);
+  const [editCompType, setEditCompType] = useState<RecipeComponentType>('INSUMO');
+  const [editSelectedId, setEditSelectedId] = useState<string>('');
+  const [editCompQuantity, setEditCompQuantity] = useState<string>('1');
+  const [editCompUnit, setEditCompUnit] = useState<string>('');
+  const [editCompUnitCost, setEditCompUnitCost] = useState<string>('0');
+
   // Estado para agregar un componente a la receta
   const [newComponentType, setNewComponentType] = useState<RecipeComponentType>('INSUMO');
   const [newComponentId, setNewComponentId] = useState<string>('');
@@ -204,6 +215,7 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
       setLinkedItemId('');
       setRecipeComponents([]);
     }
+    setEditingCompId(null);
     setFormError('');
     setNewComponentId('');
     setNewQuantity('1');
@@ -435,6 +447,33 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
     }
   }, [newComponentType, items, productionProducts]);
 
+  // Opciones para el selector de componentes en modo edición según editCompType
+  const editAvailableComponentOptions = useMemo(() => {
+    const isIns = String(editCompType || '').toUpperCase().includes('INS');
+    if (isIns) {
+      return items.map((i) => ({
+        value: i.id,
+        label: i.name,
+        sublabel: `${i.storageUnit} • Costo: $${(Number(i.currentPrice) || 0).toLocaleString('es-AR')} • [Insumo]`,
+        name: i.name,
+        unit: i.storageUnit,
+        unitCost: Number(i.currentPrice) || 0,
+      }));
+    } else {
+      return productionProducts.map((p) => {
+        const cost = Number(p.costPrice ?? (p as any).unitCost ?? (p as any).unit_cost ?? 0);
+        return {
+          value: p.id,
+          label: p.name,
+          sublabel: `${p.unit || 'u'} • Costo: $${cost.toLocaleString('es-AR')} • [Producción]`,
+          name: p.name,
+          unit: p.unit || 'u',
+          unitCost: cost,
+        };
+      });
+    }
+  }, [editCompType, items, productionProducts]);
+
   // Agregar componente a la receta
   const handleAddComponent = () => {
     if (!newComponentId) {
@@ -469,6 +508,75 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
     setNewComponentId('');
     setNewQuantity('1');
     setFormError('');
+  };
+
+  // Manejadores para edición en línea de componentes de la receta
+  const handleStartEditComp = (comp: RecipeComponent) => {
+    setEditingCompId(comp.id);
+    const isIns = String(comp.componentType || '').toUpperCase().includes('INS');
+    const normalizedType: RecipeComponentType = isIns ? 'INSUMO' : 'PRODUCCION';
+    setEditCompType(normalizedType);
+    setEditSelectedId(comp.componentId);
+    setEditCompQuantity(String(comp.quantity));
+    setEditCompUnit(comp.unit || '');
+    setEditCompUnitCost(String(comp.unitCost || 0));
+  };
+
+  const handleCancelEditComp = () => {
+    setEditingCompId(null);
+  };
+
+  const handleEditTypeChange = (newType: RecipeComponentType) => {
+    setEditCompType(newType);
+    setEditSelectedId('');
+  };
+
+  const handleEditSelectedChange = (newId: string) => {
+    setEditSelectedId(newId);
+    const found = editAvailableComponentOptions.find((o) => o.value === newId);
+    if (found) {
+      setEditCompUnit(found.unit || 'u');
+      setEditCompUnitCost(String(found.unitCost || 0));
+    }
+  };
+
+  const handleSaveEditComp = (compRecordId: string) => {
+    const qty = parseFloat(editCompQuantity);
+    if (isNaN(qty) || qty <= 0) {
+      showToast('La cantidad debe ser mayor a 0.', 'warning');
+      return;
+    }
+    const cost = parseFloat(editCompUnitCost);
+    if (isNaN(cost) || cost < 0) {
+      showToast('El costo unitario debe ser mayor o igual a 0.', 'warning');
+      return;
+    }
+
+    const foundOption = editAvailableComponentOptions.find((o) => o.value === editSelectedId);
+    const currentComp = recipeComponents.find((c) => c.id === compRecordId);
+    const componentName = foundOption ? foundOption.name : (currentComp?.componentName || 'Componente');
+    const unitToSave = editCompUnit.trim() || foundOption?.unit || currentComp?.unit || 'u';
+
+    setRecipeComponents((prev) =>
+      prev.map((c) => {
+        if (c.id === compRecordId) {
+          return {
+            ...c,
+            componentType: editCompType,
+            componentId: editSelectedId || c.componentId,
+            componentName,
+            quantity: qty,
+            unit: unitToSave,
+            unitCost: cost,
+            subtotal: qty * cost,
+          };
+        }
+        return c;
+      })
+    );
+
+    setEditingCompId(null);
+    showToast('Componente de la receta modificado exitosamente.', 'success');
   };
 
   // Quitar componente de la receta
@@ -896,17 +1004,16 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">
                       Seleccionar Componente
                     </label>
-                    <SelectInput
+                    <SearchableSelect
+                      options={availableComponentOptions.map((o) => ({
+                        value: o.value,
+                        label: o.name,
+                        sublabel: `${o.unit} • Costo: $${(Number(o.unitCost) || 0).toLocaleString('es-AR')}`,
+                      }))}
                       value={newComponentId}
-                      onChange={(e) => setNewComponentId(e.target.value)}
-                      options={[
-                        { value: '', label: '-- Seleccionar --' },
-                        ...availableComponentOptions.map((o) => ({
-                          value: o.value,
-                          label: o.label,
-                        })),
-                      ]}
-                      className="h-10"
+                      onChange={(val) => setNewComponentId(val)}
+                      placeholder="-- Buscar insumo o producción --"
+                      searchPlaceholder="Escribe para buscar..."
                     />
                   </div>
 
@@ -947,67 +1054,167 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
                   <p className="text-[11px] text-slate-500">Selecciona arriba insumos o producciones y presiona "Añadir".</p>
                 </div>
               ) : (
-                <div className="bg-white rounded-2xl border border-indigo-200 overflow-hidden shadow-xs">
-                  <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
-                      <tr>
-                        <th className="p-2.5">Tipo</th>
-                        <th className="p-2.5">Componente</th>
-                        <th className="p-2.5 text-right">Cantidad</th>
-                        <th className="p-2.5 text-right">Costo Unit.</th>
-                        <th className="p-2.5 text-right">Subtotal</th>
-                        <th className="p-2.5 text-center">Quitar</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {recipeComponents.map((comp) => (
-                        <tr key={comp.id} className="hover:bg-slate-50/60">
-                          <td className="p-2.5">
-                            {comp.componentType === 'INSUMO' ? (
-                              <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
-                                Insumo
-                              </span>
-                            ) : (
-                              <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-200">
-                                Producción
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-2.5 font-bold text-slate-800">{comp.componentName}</td>
-                          <td className="p-2.5 text-right font-mono text-slate-700">
-                            {comp.quantity} {comp.unit}
-                          </td>
-                          <td className="p-2.5 text-right font-mono text-slate-500">
-                            ${(Number(comp.unitCost) || 0).toLocaleString('es-AR')}
-                          </td>
-                          <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                            ${(Number(comp.subtotal) || 0).toLocaleString('es-AR')}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveComponent(comp.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                              title="Quitar de receta"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </td>
+                <div className="bg-white rounded-2xl border border-indigo-200 shadow-xs relative">
+                  <div className="overflow-x-auto min-h-[140px]">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
+                        <tr>
+                          <th className="p-2.5 w-28">Tipo</th>
+                          <th className="p-2.5 min-w-[200px]">Componente</th>
+                          <th className="p-2.5 text-right w-24">Cantidad</th>
+                          <th className="p-2.5 text-right w-20">Unidad</th>
+                          <th className="p-2.5 text-right w-28">Costo Unit.</th>
+                          <th className="p-2.5 text-right w-28">Subtotal</th>
+                          <th className="p-2.5 text-center w-24">Acciones</th>
                         </tr>
-                      ))}
-                    </tbody>
-                    <tfoot className="bg-slate-50 font-bold border-t border-slate-200">
-                      <tr>
-                        <td colSpan={4} className="p-2.5 text-right text-slate-500 uppercase text-[10px]">
-                          Costo Total de la Receta:
-                        </td>
-                        <td className="p-2.5 text-right font-mono text-slate-900 text-sm">
-                          ${(Number(calculatedCost) || 0).toLocaleString('es-AR')}
-                        </td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {recipeComponents.map((comp) => {
+                          const isEditing = editingCompId === comp.id;
+                          if (isEditing) {
+                            const curSubtotal = (parseFloat(editCompQuantity) || 0) * (parseFloat(editCompUnitCost) || 0);
+                            return (
+                              <tr key={comp.id} className="bg-indigo-50/60 transition-colors relative z-30">
+                                <td className="p-2">
+                                  <select
+                                    value={String(editCompType || '').toUpperCase().includes('INS') ? 'INSUMO' : 'PRODUCCION'}
+                                    onChange={(e) => handleEditTypeChange(e.target.value as RecipeComponentType)}
+                                    className="w-full h-10 px-2 text-xs font-bold bg-white border border-indigo-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-indigo-900"
+                                  >
+                                    <option value="INSUMO">Insumo</option>
+                                    <option value="PRODUCCION">Producción</option>
+                                  </select>
+                                </td>
+                                <td className="p-2 relative z-40">
+                                  <SearchableSelect
+                                    options={editAvailableComponentOptions.map((o) => ({
+                                      value: o.value,
+                                      label: o.name,
+                                      sublabel: `${o.unit} • Costo: $${(Number(o.unitCost) || 0).toLocaleString('es-AR')}`,
+                                    }))}
+                                    value={editSelectedId}
+                                    onChange={handleEditSelectedChange}
+                                    placeholder="Seleccionar..."
+                                    searchPlaceholder="Buscar componente..."
+                                  />
+                                </td>
+                                <td className="p-2 text-right">
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    min="0.0001"
+                                    value={editCompQuantity}
+                                    onChange={(e) => setEditCompQuantity(e.target.value)}
+                                    className="w-full px-2 py-1.5 text-xs text-right border border-indigo-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono bg-white font-bold"
+                                    placeholder="Cant."
+                                  />
+                                </td>
+                                <td className="p-2 text-right">
+                                  <input
+                                    type="text"
+                                    value={editCompUnit}
+                                    onChange={(e) => setEditCompUnit(e.target.value)}
+                                    className="w-full px-2 py-1.5 text-xs text-right border border-indigo-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white font-semibold"
+                                    placeholder="Unidad"
+                                  />
+                                </td>
+                                <td className="p-2 text-right">
+                                  <input
+                                    type="number"
+                                    step="any"
+                                    min="0"
+                                    value={editCompUnitCost}
+                                    onChange={(e) => setEditCompUnitCost(e.target.value)}
+                                    className="w-full px-2 py-1.5 text-xs text-right border border-indigo-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono font-bold bg-white"
+                                    placeholder="Costo"
+                                  />
+                                </td>
+                                <td className="p-2 text-right font-mono font-bold text-indigo-900 text-xs">
+                                  ${curSubtotal.toLocaleString('es-AR')}
+                                </td>
+                                <td className="p-2 text-center">
+                                  <div className="flex items-center justify-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSaveEditComp(comp.id)}
+                                      className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-xs"
+                                      title="Guardar cambios"
+                                    >
+                                      <Check className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={handleCancelEditComp}
+                                      className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition"
+                                      title="Cancelar edición"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          }
+
+                          return (
+                            <tr key={comp.id} className="hover:bg-slate-50/60 transition-colors">
+                              <td className="p-2.5">
+                                {String(comp.componentType || '').toUpperCase().includes('INS') ? (
+                                  <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
+                                    Insumo
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-200">
+                                    Producción
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2.5 font-bold text-slate-800">{comp.componentName}</td>
+                              <td className="p-2.5 text-right font-mono text-slate-700 font-bold">{comp.quantity}</td>
+                              <td className="p-2.5 text-right text-slate-500 font-bold">{comp.unit}</td>
+                              <td className="p-2.5 text-right font-mono text-slate-500">
+                                ${(Number(comp.unitCost) || 0).toLocaleString('es-AR')}
+                              </td>
+                              <td className="p-2.5 text-right font-mono font-bold text-slate-900">
+                                ${(Number(comp.subtotal) || 0).toLocaleString('es-AR')}
+                              </td>
+                              <td className="p-2.5 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleStartEditComp(comp)}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition"
+                                    title="Editar componente de la receta"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveComponent(comp.id)}
+                                    className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                    title="Quitar de receta"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                      <tfoot className="bg-slate-50 font-bold border-t border-slate-200 relative z-0">
+                        <tr>
+                          <td colSpan={5} className="p-2.5 text-right text-slate-500 uppercase text-[10px]">
+                            Costo Total de la Receta:
+                          </td>
+                          <td className="p-2.5 text-right font-mono text-slate-900 text-sm font-black">
+                            ${(Number(calculatedCost) || 0).toLocaleString('es-AR')}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>

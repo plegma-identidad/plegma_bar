@@ -8,6 +8,8 @@ import {
   ChefHat,
   Plus,
   Trash2,
+  Edit2,
+  Check,
   Layers,
   FileText,
   Video,
@@ -27,6 +29,7 @@ import {
 import { supabase } from '../../lib/supabase';
 import { storageService } from '../../services/storageService';
 import { ConfigManagerModal } from '../ui/ConfigManagerModal';
+import { SearchableSelect } from '../ui/SearchableSelect';
 
 interface ProductionModalProps {
   productToEdit?: ProductionProduct | null;
@@ -113,6 +116,13 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
   // Receta de Producción (SOLO INSUMOS)
   const [recipeItems, setRecipeItems] = useState<ProductionRecipeItem[]>([]);
 
+  // Estados para edición en línea de un ítem de la receta
+  const [editingRecipeItemId, setEditingRecipeItemId] = useState<string | null>(null);
+  const [editItemId, setEditItemId] = useState<string>('');
+  const [editQuantity, setEditQuantity] = useState<string>('1');
+  const [editUnit, setEditUnit] = useState<string>('');
+  const [editUnitCost, setEditUnitCost] = useState<string>('0');
+
   // Estados para agregar un insumo a la receta
   const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [newQuantity, setNewQuantity] = useState<string>('1');
@@ -176,6 +186,7 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
       setActive(true);
       setRecipeItems([]);
     }
+    setEditingRecipeItemId(null);
     setFormError('');
     setSelectedItemId('');
     setNewQuantity('1');
@@ -417,6 +428,66 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
     setSelectedItemId('');
     setNewQuantity('1');
     setFormError('');
+  };
+
+  // Manejadores para edición en línea de un ítem de la receta
+  const handleStartEditRecipeItem = (item: ProductionRecipeItem) => {
+    setEditingRecipeItemId(item.id);
+    setEditItemId(item.itemId);
+    setEditQuantity(String(item.quantity));
+    setEditUnit(item.unit || '');
+    setEditUnitCost(String(item.unitCost || 0));
+  };
+
+  const handleCancelEditRecipeItem = () => {
+    setEditingRecipeItemId(null);
+  };
+
+  const handleEditItemChange = (newItemId: string) => {
+    setEditItemId(newItemId);
+    const found = activeItems.find((i) => i.id === newItemId);
+    if (found) {
+      setEditUnit(found.storageUnit || 'u');
+      setEditUnitCost(String(found.currentPrice || 0));
+    }
+  };
+
+  const handleSaveEditRecipeItem = (recipeId: string) => {
+    const qty = parseFloat(editQuantity);
+    if (isNaN(qty) || qty <= 0) {
+      showToast('La cantidad del insumo debe ser mayor a 0.', 'warning');
+      return;
+    }
+    const cost = parseFloat(editUnitCost);
+    if (isNaN(cost) || cost < 0) {
+      showToast('El costo unitario debe ser mayor o igual a 0.', 'warning');
+      return;
+    }
+
+    const foundItem = activeItems.find((i) => i.id === editItemId);
+    const currentItem = recipeItems.find((r) => r.id === recipeId);
+    const itemName = foundItem ? foundItem.name : (currentItem?.itemName || 'Insumo');
+    const unitToSave = editUnit.trim() || foundItem?.storageUnit || currentItem?.unit || 'u';
+
+    setRecipeItems((prev) =>
+      prev.map((r) => {
+        if (r.id === recipeId) {
+          return {
+            ...r,
+            itemId: editItemId || r.itemId,
+            itemName,
+            quantity: qty,
+            unit: unitToSave,
+            unitCost: cost,
+            subtotal: qty * cost,
+          };
+        }
+        return r;
+      })
+    );
+
+    setEditingRecipeItemId(null);
+    showToast('Insumo de la receta actualizado correctamente.', 'success');
   };
 
   // Quitar insumo de la receta
@@ -748,17 +819,16 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                   <label className="block text-[11px] font-bold text-slate-600 mb-1">
                     Seleccionar Insumo del Inventario
                   </label>
-                  <SelectInput
+                  <SearchableSelect
+                    options={activeItems.map((i) => ({
+                      value: i.id,
+                      label: i.name,
+                      sublabel: `${i.storageUnit || 'u'} • Costo: $${(Number(i.currentPrice) || 0).toLocaleString('es-AR')}`,
+                    }))}
                     value={selectedItemId}
-                    onChange={(e) => setSelectedItemId(e.target.value)}
-                    options={[
-                      { value: '', label: '-- Selecciona un insumo --' },
-                      ...activeItems.map((i) => ({
-                        value: i.id,
-                        label: `${i.name} (${i.storageUnit}) - Costo: ${(Number(i.currentPrice) || 0).toLocaleString('es-AR')}`,
-                      })),
-                    ]}
-                    className="h-10"
+                    onChange={(val) => setSelectedItemId(val)}
+                    placeholder="-- Buscar y seleccionar insumo --"
+                    searchPlaceholder="Escribe el nombre del insumo..."
                   />
                 </div>
 
@@ -805,38 +875,126 @@ export const ProductionModal: React.FC<ProductionModalProps> = ({
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
                     <tr>
-                      <th className="p-2.5">Insumo</th>
-                      <th className="p-2.5 text-right">Cantidad</th>
-                      <th className="p-2.5 text-right">Unidad</th>
-                      <th className="p-2.5 text-right">Costo Unit.</th>
-                      <th className="p-2.5 text-right">Subtotal</th>
-                      <th className="p-2.5 text-center">Quitar</th>
+                      <th className="p-2.5 min-w-[200px]">Insumo</th>
+                      <th className="p-2.5 text-right w-24">Cantidad</th>
+                      <th className="p-2.5 text-right w-20">Unidad</th>
+                      <th className="p-2.5 text-right w-28">Costo Unit.</th>
+                      <th className="p-2.5 text-right w-28">Subtotal</th>
+                      <th className="p-2.5 text-center w-24">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
-                    {recipeItems.map((item) => (
-                      <tr key={item.id} className="hover:bg-slate-50/60">
-                        <td className="p-2.5 font-bold text-slate-800">{item.itemName}</td>
-                        <td className="p-2.5 text-right font-mono text-slate-700">{item.quantity}</td>
-                        <td className="p-2.5 text-right text-slate-500 font-bold">{item.unit}</td>
-                        <td className="p-2.5 text-right font-mono text-slate-500">
-                          ${(Number(item.unitCost) || 0).toLocaleString('es-AR')}
-                        </td>
-                        <td className="p-2.5 text-right font-mono font-bold text-slate-900">
-                          ${(Number(item.subtotal) || 0).toLocaleString('es-AR')}
-                        </td>
-                        <td className="p-2.5 text-center">
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveRecipeItem(item.id)}
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                            title="Quitar de receta"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                    {recipeItems.map((item) => {
+                      const isEditing = editingRecipeItemId === item.id;
+                      if (isEditing) {
+                        const curSubtotal = (parseFloat(editQuantity) || 0) * (parseFloat(editUnitCost) || 0);
+                        return (
+                          <tr key={item.id} className="bg-amber-50/60 transition-colors">
+                            <td className="p-2">
+                              <SearchableSelect
+                                options={activeItems.map((i) => ({
+                                  value: i.id,
+                                  label: i.name,
+                                  sublabel: `${i.storageUnit || 'u'} • Costo: $${(Number(i.currentPrice) || 0).toLocaleString('es-AR')}`,
+                                }))}
+                                value={editItemId}
+                                onChange={handleEditItemChange}
+                                placeholder="Seleccionar..."
+                                searchPlaceholder="Buscar insumo..."
+                              />
+                            </td>
+                            <td className="p-2 text-right">
+                              <input
+                                type="number"
+                                step="any"
+                                min="0.0001"
+                                value={editQuantity}
+                                onChange={(e) => setEditQuantity(e.target.value)}
+                                className="w-full px-2 py-1.5 text-xs text-right border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono bg-white font-bold"
+                                placeholder="Cant."
+                              />
+                            </td>
+                            <td className="p-2 text-right">
+                              <input
+                                type="text"
+                                value={editUnit}
+                                onChange={(e) => setEditUnit(e.target.value)}
+                                className="w-full px-2 py-1.5 text-xs text-right border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white font-semibold"
+                                placeholder="Unidad"
+                              />
+                            </td>
+                            <td className="p-2 text-right">
+                              <input
+                                type="number"
+                                step="any"
+                                min="0"
+                                value={editUnitCost}
+                                onChange={(e) => setEditUnitCost(e.target.value)}
+                                className="w-full px-2 py-1.5 text-xs text-right border border-amber-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono font-bold bg-white"
+                                placeholder="Costo"
+                              />
+                            </td>
+                            <td className="p-2 text-right font-mono font-bold text-amber-900 text-xs">
+                              $${curSubtotal.toLocaleString('es-AR')}
+                            </td>
+                            <td className="p-2 text-center">
+                              <div className="flex items-center justify-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleSaveEditRecipeItem(item.id)}
+                                  className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition shadow-xs"
+                                  title="Guardar cambios"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleCancelEditRecipeItem}
+                                  className="p-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition"
+                                  title="Cancelar edición"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      }
+
+                      return (
+                        <tr key={item.id} className="hover:bg-slate-50/60 transition-colors">
+                          <td className="p-2.5 font-bold text-slate-800">{item.itemName}</td>
+                          <td className="p-2.5 text-right font-mono text-slate-700 font-bold">{item.quantity}</td>
+                          <td className="p-2.5 text-right text-slate-500 font-bold">{item.unit}</td>
+                          <td className="p-2.5 text-right font-mono text-slate-500">
+                            ${(Number(item.unitCost) || 0).toLocaleString('es-AR')}
+                          </td>
+                          <td className="p-2.5 text-right font-mono font-bold text-slate-900">
+                            ${(Number(item.subtotal) || 0).toLocaleString('es-AR')}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleStartEditRecipeItem(item)}
+                                className="p-1 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition"
+                                title="Editar ítem de la receta"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRecipeItem(item.id)}
+                                className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                title="Quitar de receta"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                   <tfoot className="bg-slate-50 font-bold border-t border-slate-200">
                     <tr>

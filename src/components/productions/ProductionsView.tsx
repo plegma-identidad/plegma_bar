@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ProductionProduct } from '../../types';
 import { ProductionModal } from './ProductionModal';
@@ -24,6 +24,8 @@ import {
   ArrowUpRight,
   Warehouse,
   Flame,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 export const ProductionsView: React.FC = () => {
@@ -91,6 +93,28 @@ export const ProductionsView: React.FC = () => {
       return true;
     });
   }, [productionProducts, selectedCategory, selectedWarehouse, selectedStatus, searchQuery]);
+
+  // Paginación (8 registros por página)
+  const ITEMS_PER_PAGE = 8;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Resetear a página 1 al cambiar filtros o búsqueda
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedCategory, selectedWarehouse, selectedStatus]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / ITEMS_PER_PAGE));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [totalPages, currentPage]);
+
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredProducts.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredProducts, currentPage]);
 
   // KPIs Superiores
   const stats = useMemo(() => {
@@ -324,7 +348,7 @@ export const ProductionsView: React.FC = () => {
       ) : viewMode === 'grid' ? (
         /* VISTA EN CUADRÍCULA (CARDS) */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredProducts.map((product) => {
+          {paginatedProducts.map((product) => {
             return (
               <div
                 key={product.id}
@@ -513,7 +537,7 @@ export const ProductionsView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredProducts.map((product) => {
+                {paginatedProducts.map((product) => {
                   return (
                     <tr
                       key={product.id}
@@ -608,6 +632,83 @@ export const ProductionsView: React.FC = () => {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Controles de Paginación (8 registros por página) */}
+      {filteredProducts.length > 0 && (
+        <div className="bg-white border border-slate-200 rounded-2xl p-3.5 sm:p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+          <div className="text-xs text-slate-500 font-medium text-center sm:text-left">
+            Mostrando{' '}
+            <span className="font-bold text-slate-800">
+              {(currentPage - 1) * ITEMS_PER_PAGE + 1}
+            </span>{' '}
+            a{' '}
+            <span className="font-bold text-slate-800">
+              {Math.min(currentPage * ITEMS_PER_PAGE, filteredProducts.length)}
+            </span>{' '}
+            de{' '}
+            <span className="font-bold text-slate-800">
+              {filteredProducts.length}
+            </span>{' '}
+            producciones {totalPages > 1 && `(Página ${currentPage} de ${totalPages})`}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-xs flex items-center gap-1"
+                title="Página anterior"
+              >
+                <ChevronLeft className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Anterior</span>
+              </button>
+
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1)
+                  .filter((p) => {
+                    return p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1;
+                  })
+                  .map((pageNum, idx, arr) => {
+                    const prev = arr[idx - 1];
+                    const showEllipsis = prev && pageNum - prev > 1;
+
+                    return (
+                      <React.Fragment key={pageNum}>
+                        {showEllipsis && (
+                          <span className="px-1 text-slate-400 text-xs font-bold">...</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage(pageNum)}
+                          className={`w-8 h-8 text-xs font-bold rounded-xl transition shadow-xs ${
+                            currentPage === pageNum
+                              ? 'bg-amber-500 text-white shadow-amber-500/20'
+                              : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          {pageNum}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-1.5 text-xs font-bold rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition shadow-xs flex items-center gap-1"
+                title="Página siguiente"
+              >
+                <span className="hidden sm:inline">Siguiente</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
       )}
 
