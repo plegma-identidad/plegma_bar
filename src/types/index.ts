@@ -709,12 +709,22 @@ export interface CashMovement {
   targetMasterBoxId?: string;
 }
 
+export interface OperativeCashBox {
+  id: string;
+  name: string;                  // ej: "Efectivo", "Mercado Pago 1", "Tarjeta Posnet"
+  description?: string;
+  defaultInitialAmount: number;  // Monto inicial sugerido al abrir turno ($)
+  active: boolean;               // Activa para nuevos turnos
+  sortOrder?: number;
+}
+
 export interface MasterCashBox {
   id: string;
   name: string;                  // ej: "Caja Fuerte Principal", "Cuenta Mercado Pago Empresa", "Banco Galicia"
   boxType: string;               // Medio asociado
   status: 'Siempre Abierta';     // No se cierran jamás
   currentBalance: number;        // Saldo positivo acumulado por retiros
+  active?: boolean;              // Activa para recibir retiros
 }
 
 export interface CashWithdrawalPayload {

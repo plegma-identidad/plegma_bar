@@ -972,3 +972,91 @@ VALUES
   ('PedidosYa / Apps', false, false, false, 'Pendiente', 'Facturado', false)
 ON CONFLICT DO NOTHING;
 
+-- ----------------------------------------------------
+-- VENTAS: CONTROL DE CAJA
+-- ----------------------------------------------------
+
+-- Cajas Maestras ("Siempre Abiertas")
+CREATE TABLE IF NOT EXISTS public.master_cash_boxes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  box_type TEXT,
+  status TEXT DEFAULT 'Siempre Abierta',
+  current_balance NUMERIC(15, 2) DEFAULT 0,
+  active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Cajas Operativas (Puntos de Cobro / Medios de Pago de Turno)
+CREATE TABLE IF NOT EXISTS public.operative_cash_boxes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  description TEXT,
+  default_initial_amount NUMERIC(15, 2) DEFAULT 0,
+  active BOOLEAN DEFAULT TRUE,
+  sort_order INTEGER DEFAULT 1,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Cajas de Turno (Aperturas y Cierres)
+CREATE TABLE IF NOT EXISTS public.cash_shifts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shift TEXT NOT NULL, -- 'Mañana' | 'Tarde'
+  name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'Abierta', -- 'Abierta' | 'Cerrada' | 'Conciliada' | 'Anulada'
+  opened_by_user_id UUID,
+  opened_by_user_name TEXT NOT NULL,
+  notes TEXT,
+  closed_at TIMESTAMPTZ,
+  reconciled_at TIMESTAMPTZ,
+  reconciled_by_user_name TEXT,
+  total_difference NUMERIC(15, 2) DEFAULT 0,
+  void_reason TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Líneas de Caja por Turno
+CREATE TABLE IF NOT EXISTS public.cash_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  shift_id UUID REFERENCES public.cash_shifts(id) ON DELETE CASCADE,
+  box_type TEXT NOT NULL,
+  initial_amount NUMERIC(15, 2) DEFAULT 0,
+  tickets_total NUMERIC(15, 2) DEFAULT 0,
+  expenses_total NUMERIC(15, 2) DEFAULT 0,
+  withdrawals_total NUMERIC(15, 2) DEFAULT 0,
+  theoretical_amount NUMERIC(15, 2) DEFAULT 0,
+  real_amount NUMERIC(15, 2),
+  difference NUMERIC(15, 2),
+  difference_notes TEXT,
+  status TEXT NOT NULL DEFAULT 'Abierta', -- 'Abierta' | 'Cerrada' | 'Conciliada'
+  opened_by_user_id UUID,
+  opened_by_user_name TEXT,
+  closed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Movimientos de Línea de Caja
+CREATE TABLE IF NOT EXISTS public.cash_movements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  line_id UUID REFERENCES public.cash_lines(id) ON DELETE CASCADE,
+  shift_id UUID REFERENCES public.cash_shifts(id) ON DELETE CASCADE,
+  date_time TIMESTAMPTZ DEFAULT NOW(),
+  type TEXT NOT NULL, -- 'Ingreso' | 'Salida' | 'Ticket' | 'Gasto' | 'Consumo' | 'Retiro' | 'Traspaso' | 'Ajuste' | 'Apertura'
+  category TEXT,
+  category_type TEXT,
+  origin TEXT NOT NULL,
+  voucher_number TEXT,
+  amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
+  user_id UUID,
+  user_name TEXT NOT NULL,
+  notes TEXT,
+  target_line_id UUID,
+  target_master_box_id UUID,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+

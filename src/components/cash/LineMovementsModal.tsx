@@ -70,7 +70,9 @@ export const LineMovementsModal: React.FC<LineMovementsModalProps> = ({
   const [voucherNumber, setVoucherNumber] = useState('');
   const [amountStr, setAmountStr] = useState('');
   const [notes, setNotes] = useState('');
-  const [targetMasterId, setTargetMasterId] = useState<string>(masterCashBoxes[0]?.id || '');
+  const [targetMasterId, setTargetMasterId] = useState<string>(
+    masterCashBoxes.find((mb) => mb.active !== false)?.id || masterCashBoxes[0]?.id || ''
+  );
   const [targetLineId, setTargetLineId] = useState<string>('');
   const [error, setError] = useState('');
 
@@ -362,10 +364,12 @@ export const LineMovementsModal: React.FC<LineMovementsModalProps> = ({
                     {nature === 'Salida' && category === 'Retiro a Caja Fuerte / Maestra' ? (
                       <FormField label="Caja Maestra de Destino" required hint="Destino del retiro">
                         <SelectInput
-                          options={masterCashBoxes.map((mb) => ({
-                            value: mb.id,
-                            label: `🏛️ ${mb.name} (${mb.boxType})`,
-                          }))}
+                          options={masterCashBoxes
+                            .filter((mb) => mb.active !== false)
+                            .map((mb) => ({
+                              value: mb.id,
+                              label: `🏛️ ${mb.name} (${mb.boxType})`,
+                            }))}
                           value={targetMasterId}
                           onChange={(e) => setTargetMasterId(e.target.value)}
                         />

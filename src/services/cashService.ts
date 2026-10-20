@@ -1,9 +1,139 @@
 import { supabase } from '../lib/supabase';
-import { MasterCashBox, CashShift, CashLine, CashMovement } from '../types';
+import { MasterCashBox, OperativeCashBox, CashShift, CashLine, CashMovement } from '../types';
 
 export const cashService = {
   // ----------------------------------------------------
-  // MASTER CASH BOXES
+  // OPERATIVE CASH BOXES (Medios de Pago / Turno)
+  // ----------------------------------------------------
+  async getOperativeCashBoxes(): Promise<OperativeCashBox[]> {
+    try {
+      const { data, error } = await supabase
+        .from('operative_cash_boxes')
+        .select('*')
+        .order('sort_order', { ascending: true });
+
+      if (error) {
+        console.error('Error al obtener cajas operativas desde Supabase:', error);
+        return [];
+      }
+
+      if (!data || data.length === 0) return [];
+
+      return data.map((row) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description || '',
+        defaultInitialAmount: Number(row.default_initial_amount) || 0,
+        active: row.active ?? true,
+        sortOrder: Number(row.sort_order) || 1,
+      }));
+    } catch (err) {
+      console.error('Exception al obtener cajas operativas:', err);
+      return [];
+    }
+  },
+
+  async saveOperativeCashBox(box: Partial<OperativeCashBox>): Promise<OperativeCashBox | null> {
+    try {
+      const isExistingUuid =
+        box.id &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(box.id);
+
+      const payload: Record<string, any> = {
+        name: box.name?.trim(),
+        description: box.description?.trim() || null,
+        default_initial_amount: Number(box.defaultInitialAmount) || 0,
+        active: box.active ?? true,
+        sort_order: Number(box.sortOrder) || 1,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (isExistingUuid) {
+        const { data, error } = await supabase
+          .from('operative_cash_boxes')
+          .update(payload)
+          .eq('id', box.id)
+          .select('*')
+          .single();
+
+        if (error) {
+          console.error('Error al actualizar caja operativa en Supabase:', error);
+          return null;
+        }
+
+        return {
+          id: data.id,
+          name: data.name,
+          description: data.description || '',
+          defaultInitialAmount: Number(data.default_initial_amount) || 0,
+          active: data.active ?? true,
+          sortOrder: Number(data.sort_order) || 1,
+        };
+      } else {
+        const { data, error } = await supabase
+          .from('operative_cash_boxes')
+          .insert(payload)
+          .select('*')
+          .single();
+
+        if (error) {
+          console.error('Error al insertar caja operativa en Supabase:', error);
+          return null;
+        }
+
+        return {
+          id: data.id,
+          name: data.name,
+          description: data.description || '',
+          defaultInitialAmount: Number(data.default_initial_amount) || 0,
+          active: data.active ?? true,
+          sortOrder: Number(data.sort_order) || 1,
+        };
+      }
+    } catch (err) {
+      console.error('Exception al guardar caja operativa:', err);
+      return null;
+    }
+  },
+
+  async toggleOperativeCashBoxActive(id: string, active: boolean): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('operative_cash_boxes')
+        .update({ active, updated_at: new Date().toISOString() })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error al cambiar estado de caja operativa:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Exception al cambiar estado de caja operativa:', err);
+      return false;
+    }
+  },
+
+  async deleteOperativeCashBox(id: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('operative_cash_boxes')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error al eliminar caja operativa:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Exception al eliminar caja operativa:', err);
+      return false;
+    }
+  },
+
+  // ----------------------------------------------------
+  // MASTER CASH BOXES ("Siempre Abiertas")
   // ----------------------------------------------------
   async getMasterCashBoxes(): Promise<MasterCashBox[]> {
     try {
@@ -25,10 +155,109 @@ export const cashService = {
         boxType: row.box_type || row.name,
         status: (row.status as any) || 'Siempre Abierta',
         currentBalance: row.current_balance || 0,
+        active: row.active ?? true,
       }));
     } catch (err) {
       console.error('Exception al obtener cajas maestras:', err);
       return [];
+    }
+  },
+
+  async saveMasterCashBox(box: Partial<MasterCashBox>): Promise<MasterCashBox | null> {
+    try {
+      const isExistingUuid =
+        box.id &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(box.id);
+
+      const payload: Record<string, any> = {
+        name: box.name?.trim(),
+        box_type: box.boxType?.trim() || box.name?.trim(),
+        status: box.status || 'Siempre Abierta',
+        current_balance: Number(box.currentBalance) || 0,
+        active: box.active ?? true,
+      };
+
+      if (isExistingUuid) {
+        const { data, error } = await supabase
+          .from('master_cash_boxes')
+          .update(payload)
+          .eq('id', box.id)
+          .select('*')
+          .single();
+
+        if (error) {
+          console.error('Error al actualizar caja maestra en Supabase:', error);
+          return null;
+        }
+
+        return {
+          id: data.id,
+          name: data.name,
+          boxType: data.box_type,
+          status: data.status,
+          currentBalance: data.current_balance,
+          active: data.active ?? true,
+        };
+      } else {
+        const { data, error } = await supabase
+          .from('master_cash_boxes')
+          .insert(payload)
+          .select('*')
+          .single();
+
+        if (error) {
+          console.error('Error al insertar caja maestra en Supabase:', error);
+          return null;
+        }
+
+        return {
+          id: data.id,
+          name: data.name,
+          boxType: data.box_type,
+          status: data.status,
+          currentBalance: data.current_balance,
+          active: data.active ?? true,
+        };
+      }
+    } catch (err) {
+      console.error('Exception al guardar caja maestra:', err);
+      return null;
+    }
+  },
+
+  async toggleMasterCashBoxActive(id: string, active: boolean): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('master_cash_boxes')
+        .update({ active })
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error al cambiar estado de caja maestra:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Exception al cambiar estado de caja maestra:', err);
+      return false;
+    }
+  },
+
+  async deleteMasterCashBox(id: string): Promise<boolean> {
+    try {
+      const { error } = await supabase
+        .from('master_cash_boxes')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.error('Error al eliminar caja maestra:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('Exception al eliminar caja maestra:', err);
+      return false;
     }
   },
 

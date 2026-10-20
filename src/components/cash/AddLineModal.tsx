@@ -8,19 +8,35 @@ interface AddLineModalProps {
   onConfirm: (boxType: string, initialAmount: number) => void;
 }
 
-const BOX_TYPE_OPTIONS = [
-  { value: 'Efectivo', label: 'Efectivo (Caja Chica)' },
-  { value: 'Mercado Pago 1', label: 'Mercado Pago 1 (QR Salón)' },
-  { value: 'Mercado Pago 2', label: 'Mercado Pago 2 (QR Barra)' },
-  { value: 'Mercado Pago 3', label: 'Mercado Pago 3 (Delivery)' },
-  { value: 'Cuenta Corriente', label: 'Cuenta Corriente (Clientes)' },
-  { value: 'Cortesía / Consumo Interno', label: 'Cortesía / Consumo Interno' },
-  { value: 'Tarjeta Posnet', label: 'Tarjeta Posnet / Débito / Crédito' },
-];
+import { useApp } from '../../context/AppContext';
 
 export const AddLineModal: React.FC<AddLineModalProps> = ({ onClose, onConfirm }) => {
-  const [boxType, setBoxType] = useState('Efectivo');
-  const [initialAmountStr, setInitialAmountStr] = useState('0');
+  const { operativeCashBoxes } = useApp();
+
+  const options = React.useMemo(() => {
+    const list = operativeCashBoxes.filter((b) => b.active);
+    if (list.length === 0) {
+      return [{ value: 'Efectivo', label: 'Efectivo (Caja Chica)' }];
+    }
+    return list.map((b) => ({
+      value: b.name,
+      label: b.description ? `${b.name} — ${b.description}` : b.name,
+    }));
+  }, [operativeCashBoxes]);
+
+  const [boxType, setBoxType] = useState(() => options[0]?.value || 'Efectivo');
+  const [initialAmountStr, setInitialAmountStr] = useState(() => {
+    const match = operativeCashBoxes.find((b) => b.name === (options[0]?.value || 'Efectivo'));
+    return String(match?.defaultInitialAmount || 0);
+  });
+
+  const handleBoxTypeChange = (selectedName: string) => {
+    setBoxType(selectedName);
+    const match = operativeCashBoxes.find((b) => b.name === selectedName);
+    if (match) {
+      setInitialAmountStr(String(match.defaultInitialAmount || 0));
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,9 +71,9 @@ export const AddLineModal: React.FC<AddLineModalProps> = ({ onClose, onConfirm }
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <FormField label="Tipo de Caja / Medio de Pago" required hint="Defina el medio operativo a controlar">
             <SelectInput
-              options={BOX_TYPE_OPTIONS}
+              options={options}
               value={boxType}
-              onChange={(e) => setBoxType(e.target.value)}
+              onChange={(e) => handleBoxTypeChange(e.target.value)}
             />
           </FormField>
 

@@ -41,7 +41,9 @@ export const WithdrawalModal: React.FC<WithdrawalModalProps> = ({
   // Other open lines for inter-line transfer
   const otherLines = allLines.filter((l) => l.id !== line.id && l.status === 'Abierta');
 
-  const masterBoxOptions = masterBoxes.map((mb) => ({
+  const activeMasterBoxes = masterBoxes.filter((mb) => mb.active !== false);
+
+  const masterBoxOptions = activeMasterBoxes.map((mb) => ({
     value: mb.id,
     label: `${mb.name} (Saldo: ${fmt(mb.currentBalance)})`,
   }));
@@ -55,7 +57,7 @@ export const WithdrawalModal: React.FC<WithdrawalModalProps> = ({
     setDestinationType(type);
     setError('');
     if (type === 'MasterBox') {
-      setTargetId(masterBoxes[0]?.id || '');
+      setTargetId(activeMasterBoxes[0]?.id || '');
     } else {
       setTargetId(otherLines[0]?.id || '');
     }

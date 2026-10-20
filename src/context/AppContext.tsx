@@ -29,6 +29,7 @@ import {
   CashLine,
   CashMovement,
   MasterCashBox,
+  OperativeCashBox,
   TurnoType,
   CashWithdrawalPayload,
   ReservationStatus,
@@ -212,6 +213,7 @@ interface AppContextType {
   cashLines: CashLine[];
   cashMovements: CashMovement[];
   masterCashBoxes: MasterCashBox[];
+  operativeCashBoxes: OperativeCashBox[];
   openCashShift: (shift: TurnoType, initialLines?: { boxType: string; initialAmount: number }[], notes?: string) => Promise<{ success: boolean; message: string; shift?: CashShift }>;
   addCashLine: (shiftId: string, boxType: string, initialAmount: number) => Promise<{ success: boolean; message: string; line?: CashLine }>;
   recordCashMovement: (movement: Omit<CashMovement, 'id' | 'dateTime' | 'userId' | 'userName'>) => Promise<void>;
@@ -221,6 +223,12 @@ interface AppContextType {
   closeCashShift: (shiftId: string) => Promise<{ success: boolean; message: string }>;
   reconcileCashShift: (shiftId: string) => Promise<{ success: boolean; message: string }>;
   voidCashShift: (shiftId: string, reason: string) => Promise<{ success: boolean; message: string }>;
+  addOrUpdateOperativeCashBox: (box: Partial<OperativeCashBox>) => Promise<{ success: boolean; message: string; box?: OperativeCashBox }>;
+  toggleOperativeCashBoxActive: (id: string, active: boolean) => Promise<{ success: boolean; message: string }>;
+  deleteOperativeCashBox: (id: string) => Promise<{ success: boolean; message: string }>;
+  addOrUpdateMasterCashBox: (box: Partial<MasterCashBox>) => Promise<{ success: boolean; message: string; box?: MasterCashBox }>;
+  toggleMasterCashBoxActive: (id: string, active: boolean) => Promise<{ success: boolean; message: string }>;
+  deleteMasterCashBox: (id: string) => Promise<{ success: boolean; message: string }>;
 
   // Reservations Control
   restaurantTables: RestaurantTable[];
@@ -444,7 +452,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const fetchInitialDataFromSupabase = async () => {
       try {
-        const [cats, subcats, units, saleCats, saleSubc, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts, prodCats, prodSubc, prodUnits, prodWh, fetchedCombos] = await Promise.all([
+        const [cats, subcats, units, saleCats, saleSubc, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedOpBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts, prodCats, prodSubc, prodUnits, prodWh, fetchedCombos] = await Promise.all([
           configService.getByType('category'),
           configService.getByType('subcategory'),
           configService.getByType('unit'),
@@ -458,6 +466,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           usersService.getUsers(),
           saleOrdersService.getAll(),
           cashService.getMasterCashBoxes(),
+          cashService.getOperativeCashBoxes(),
           cashService.getShifts(),
           cashService.getLines(),
           cashService.getMovements(),
@@ -557,6 +566,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setUsers(fetchedUsers);
         setSaleOrders(fetchedSaleOrders);
         setMasterCashBoxes(fetchedMasterBoxes);
+        setOperativeCashBoxes(fetchedOpBoxes);
         setCashShifts(fetchedShifts);
         setCashLines(fetchedLines);
         setCashMovements(fetchedMovements);
@@ -1395,6 +1405,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // CONTROL DE CAJA
   // ----------------------------------------------------
   const [masterCashBoxes, setMasterCashBoxes] = useState<MasterCashBox[]>([]);
+  const [operativeCashBoxes, setOperativeCashBoxes] = useState<OperativeCashBox[]>([]);
   const [cashShifts, setCashShifts] = useState<CashShift[]>([]);
   const [cashLines, setCashLines] = useState<CashLine[]>([]);
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
@@ -1874,6 +1885,82 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     );
 
     return { success: true, message: `Caja de turno "${targetShift.name}" anulada.` };
+  };
+
+  const addOrUpdateOperativeCashBox = async (box: Partial<OperativeCashBox>): Promise<{ success: boolean; message: string; box?: OperativeCashBox }> => {
+    if (!box.name?.trim()) return { success: false, message: 'El nombre de la caja operativa es obligatorio.' };
+    const saved = await cashService.saveOperativeCashBox(box);
+    if (!saved) return { success: false, message: 'Error al guardar la caja operativa en Supabase.' };
+
+    setOperativeCashBoxes((prev) => {
+      const idx = prev.findIndex((b) => b.id === saved.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = saved;
+        return copy;
+      }
+      return [...prev, saved];
+    });
+    return { success: true, message: `Caja operativa "${saved.name}" guardada correctamente.`, box: saved };
+  };
+
+  const toggleOperativeCashBoxActive = async (id: string, active: boolean): Promise<{ success: boolean; message: string }> => {
+    const ok = await cashService.toggleOperativeCashBoxActive(id, active);
+    if (!ok) return { success: false, message: 'Error al cambiar estado de la caja operativa.' };
+    setOperativeCashBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, active } : b)));
+    return { success: true, message: `Caja operativa ${active ? 'activada' : 'desactivada'} correctamente.` };
+  };
+
+  const deleteOperativeCashBox = async (id: string): Promise<{ success: boolean; message: string }> => {
+    const targetBox = operativeCashBoxes.find((b) => b.id === id);
+    const boxName = targetBox?.name?.toLowerCase() || '';
+    const isUsed = cashLines.some((l) => l.boxType.toLowerCase() === boxName);
+    if (isUsed) {
+      await cashService.toggleOperativeCashBoxActive(id, false);
+      setOperativeCashBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, active: false } : b)));
+      return { success: true, message: 'La caja operativa tiene registros históricos de turnos, por lo que fue desactivada para preservar la auditoría.' };
+    }
+    const ok = await cashService.deleteOperativeCashBox(id);
+    if (!ok) return { success: false, message: 'Error al eliminar la caja operativa.' };
+    setOperativeCashBoxes((prev) => prev.filter((b) => b.id !== id));
+    return { success: true, message: 'Caja operativa eliminada correctamente.' };
+  };
+
+  const addOrUpdateMasterCashBox = async (box: Partial<MasterCashBox>): Promise<{ success: boolean; message: string; box?: MasterCashBox }> => {
+    if (!box.name?.trim()) return { success: false, message: 'El nombre de la caja maestra es obligatorio.' };
+    const saved = await cashService.saveMasterCashBox(box);
+    if (!saved) return { success: false, message: 'Error al guardar la caja maestra en Supabase.' };
+
+    setMasterCashBoxes((prev) => {
+      const idx = prev.findIndex((b) => b.id === saved.id);
+      if (idx >= 0) {
+        const copy = [...prev];
+        copy[idx] = saved;
+        return copy;
+      }
+      return [...prev, saved];
+    });
+    return { success: true, message: `Caja maestra "${saved.name}" guardada correctamente.`, box: saved };
+  };
+
+  const toggleMasterCashBoxActive = async (id: string, active: boolean): Promise<{ success: boolean; message: string }> => {
+    const ok = await cashService.toggleMasterCashBoxActive(id, active);
+    if (!ok) return { success: false, message: 'Error al cambiar estado de la caja maestra.' };
+    setMasterCashBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, active } : b)));
+    return { success: true, message: `Caja maestra ${active ? 'activada' : 'desactivada'} correctamente.` };
+  };
+
+  const deleteMasterCashBox = async (id: string): Promise<{ success: boolean; message: string }> => {
+    const hasMovements = cashMovements.some((m) => m.targetMasterBoxId === id);
+    if (hasMovements) {
+      await cashService.toggleMasterCashBoxActive(id, false);
+      setMasterCashBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, active: false } : b)));
+      return { success: true, message: 'La caja maestra tiene retiros históricos registrados, por lo que fue desactivada para preservar la auditoría.' };
+    }
+    const ok = await cashService.deleteMasterCashBox(id);
+    if (!ok) return { success: false, message: 'Error al eliminar la caja maestra.' };
+    setMasterCashBoxes((prev) => prev.filter((b) => b.id !== id));
+    return { success: true, message: 'Caja maestra eliminada correctamente.' };
   };
 
   // ----------------------------------------------------
@@ -3826,6 +3913,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         cashLines,
         cashMovements,
         masterCashBoxes,
+        operativeCashBoxes,
         openCashShift,
         addCashLine,
         recordCashMovement,
@@ -3835,6 +3923,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         closeCashShift,
         reconcileCashShift,
         voidCashShift,
+        addOrUpdateOperativeCashBox,
+        toggleOperativeCashBoxActive,
+        deleteOperativeCashBox,
+        addOrUpdateMasterCashBox,
+        toggleMasterCashBoxActive,
+        deleteMasterCashBox,
         restaurantTables,
         reservations,
         addReservation,

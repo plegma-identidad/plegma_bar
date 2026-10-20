@@ -33,6 +33,8 @@ import { LineMovementsModal } from './cash/LineMovementsModal';
 import { PrintSummaryModal } from './cash/PrintSummaryModal';
 import { ShiftHistoryModal } from './cash/ShiftHistoryModal';
 import { ModuleHelpModal } from './ui/ModuleHelpModal';
+import { CashBoxesConfigModal } from './cash/CashBoxesConfigModal';
+import { Settings } from 'lucide-react';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
@@ -104,6 +106,7 @@ export function CashControlView() {
   const [isPrintSummaryOpen, setIsPrintSummaryOpen] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [historyShiftToView, setHistoryShiftToView] = useState<CashShift | null>(null);
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
 
   // Active shift resolution
   const activeShift = useMemo(() => {
@@ -418,8 +421,16 @@ export function CashControlView() {
           </p>
         </div>
 
-        {/* Action 1: [ + ] Crear caja de turno */}
+        {/* Action 1: [ + ] Crear caja de turno y Configurar Cajas */}
         <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant="outline"
+            leftIcon={<Settings className="w-4 h-4 text-indigo-600" />}
+            onClick={() => setIsConfigModalOpen(true)}
+            className="border-indigo-200 text-indigo-700 hover:bg-indigo-50"
+          >
+            Configurar Cajas
+          </Button>
           <Button
             variant="outline"
             leftIcon={<HelpCircle className="w-4 h-4" />}
@@ -571,12 +582,24 @@ export function CashControlView() {
             <Building2 className="w-5 h-5 text-indigo-600" />
             <h3 className="font-bold text-slate-900 text-sm">Cajas Maestras ("Siempre Abiertas")</h3>
           </div>
-          <span className="text-[11px] text-slate-400 font-medium">
-            Destino permanente de retiros operacionales
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
+              Destino permanente de retiros operacionales
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              leftIcon={<Settings className="w-3.5 h-3.5" />}
+              onClick={() => setIsConfigModalOpen(true)}
+            >
+              Gestionar
+            </Button>
+          </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {masterCashBoxes.map((mb) => (
+          {masterCashBoxes
+            .filter((mb) => mb.active !== false)
+            .map((mb) => (
             <div
               key={mb.id}
               className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between"
@@ -675,6 +698,12 @@ export function CashControlView() {
         <ModuleHelpModal
           module="cash"
           onClose={() => setIsHelpOpen(false)}
+        />
+      )}
+
+      {isConfigModalOpen && (
+        <CashBoxesConfigModal
+          onClose={() => setIsConfigModalOpen(false)}
         />
       )}
     </div>

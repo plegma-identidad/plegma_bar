@@ -23,41 +23,57 @@ const SHIFT_OPTIONS = [
   { value: 'Tarde', label: 'Tarde' },
 ];
 
-const DEFAULT_PRELOADED_BOXES = [
-  'Efectivo',
-  'Mercado Pago 1',
-  'Mercado Pago 2',
-  'Mercado Pago 3',
-  'Cuenta Corriente',
-  'Cortesía / Consumo Interno',
-  'Tarjeta Posnet',
-];
+import { useApp } from '../../context/AppContext';
 
 export const NewShiftModal: React.FC<NewShiftModalProps> = ({ onClose, onConfirm }) => {
+  const { operativeCashBoxes } = useApp();
+
+  const activeBoxes = React.useMemo(() => {
+    const list = operativeCashBoxes.filter((b) => b.active);
+    return list.length > 0
+      ? list
+      : [
+          { id: '1', name: 'Efectivo', defaultInitialAmount: 50000, active: true },
+          { id: '2', name: 'Mercado Pago 1', defaultInitialAmount: 0, active: true },
+          { id: '3', name: 'Cuenta Corriente', defaultInitialAmount: 0, active: true },
+          { id: '4', name: 'Tarjeta Posnet', defaultInitialAmount: 0, active: true },
+        ];
+  }, [operativeCashBoxes]);
+
   const [shift, setShift] = useState<TurnoType>('Mañana');
   const [notes, setNotes] = useState('');
   const [error, setError] = useState('');
 
-  // Initial amounts map per box type (mandatory input for each precargada line)
-  const [initialAmounts, setInitialAmounts] = useState<Record<string, string>>({
-    Efectivo: '50000',
-    'Mercado Pago 1': '0',
-    'Mercado Pago 2': '0',
-    'Mercado Pago 3': '0',
-    'Cuenta Corriente': '0',
-    'Cortesía / Consumo Interno': '0',
-    'Tarjeta Posnet': '0',
+  // Initial amounts map per box type (mandatory input for each active line)
+  const [initialAmounts, setInitialAmounts] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    activeBoxes.forEach((b) => {
+      init[b.name] = String(b.defaultInitialAmount || 0);
+    });
+    return init;
   });
+
+  React.useEffect(() => {
+    setInitialAmounts((prev) => {
+      const updated = { ...prev };
+      activeBoxes.forEach((b) => {
+        if (updated[b.name] === undefined) {
+          updated[b.name] = String(b.defaultInitialAmount || 0);
+        }
+      });
+      return updated;
+    });
+  }, [activeBoxes]);
 
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const dateStr = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
   const generatedName = `${shift.toUpperCase()} ${dateStr}`;
 
-  const handleAmountChange = (boxType: string, value: string) => {
+  const handleAmountChange = (boxName: string, value: string) => {
     setInitialAmounts((prev) => ({
       ...prev,
-      [boxType]: value,
+      [boxName]: value,
     }));
     setError('');
   };
@@ -66,19 +82,19 @@ export const NewShiftModal: React.FC<NewShiftModalProps> = ({ onClose, onConfirm
     e.preventDefault();
 
     const preparedLines: InitialLineConfig[] = [];
-    for (const boxType of DEFAULT_PRELOADED_BOXES) {
-      const valStr = initialAmounts[boxType];
+    for (const box of activeBoxes) {
+      const valStr = initialAmounts[box.name];
       if (valStr === undefined || valStr.trim() === '') {
-        setError(`Debe ingresar un monto inicial para la caja "${boxType}".`);
+        setError(`Debe ingresar un monto inicial para la caja "${box.name}".`);
         return;
       }
       const num = parseFloat(valStr);
       if (isNaN(num) || num < 0) {
-        setError(`El monto inicial para "${boxType}" debe ser un valor numérico válido mayor o igual a cero.`);
+        setError(`El monto inicial para "${box.name}" debe ser un valor numérico válido mayor o igual a cero.`);
         return;
       }
       preparedLines.push({
-        boxType,
+        boxType: box.name,
         initialAmount: num,
       });
     }
@@ -152,14 +168,21 @@ export const NewShiftModal: React.FC<NewShiftModalProps> = ({ onClose, onConfirm
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {DEFAULT_PRELOADED_BOXES.map((boxType) => (
+              {activeBoxes.map((box) => (
                 <div
-                  key={boxType}
+                  key={box.id || box.name}
                   className="p-3 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col justify-between space-y-1.5"
                 >
-                  <label className="text-xs font-bold text-slate-800 leading-tight block">
-                    {boxType}
-                  </label>
+                  <div>
+                    <label className="text-xs font-bold text-slate-800 leading-tight block">
+                      {box.name}
+                    </label>
+                    {box.description && (
+                      <span className="text-[10px] text-slate-400 block line-clamp-1 mt-0.5">
+                        {box.description}
+                      </span>
+                    )}
+                  </div>
                   <div className="relative">
                     <span className="absolute left-3 top-2.5 text-xs text-slate-400 font-bold">$</span>
                     <input
@@ -168,8 +191,8 @@ export const NewShiftModal: React.FC<NewShiftModalProps> = ({ onClose, onConfirm
                       min="0"
                       required
                       placeholder="0"
-                      value={initialAmounts[boxType] ?? ''}
-                      onChange={(e) => handleAmountChange(boxType, e.target.value)}
+                      value={initialAmounts[box.name] ?? ''}
+                      onChange={(e) => handleAmountChange(box.name, e.target.value)}
                       className="w-full pl-7 pr-3 py-1.5 text-xs bg-white border border-slate-300 rounded-xl font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                     />
                   </div>
