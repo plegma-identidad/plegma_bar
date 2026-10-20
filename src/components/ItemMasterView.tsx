@@ -478,7 +478,7 @@ export const ItemMasterView: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Unidad de Medida (Almacenamiento):</label>
+                <label className="font-bold text-slate-700 block mb-1">Unidad de Medida para Recetas:</label>
                 <div className="flex gap-2">
                   <SelectInput
                     options={itemUnits.filter(c => c.active).map(c => ({ value: c.name, label: c.name }))}

@@ -4,7 +4,7 @@ export interface SaleProductCatalogItem {
   id: string;
   code: string;
   name: string;
-  category: 'Más vendidos' | 'Cafetería' | 'Bebidas' | 'Combos' | 'Hamburguesas' | 'Pizzas' | 'Postres' | 'Entradas & Minutas' | 'Comidas Principal';
+  category: string;
   unitPrice: number;
   costPrice: number;             // [CP03] Cobro diferenciado a costo
   requiresSideOption: boolean;   // [R09] Acompañamiento obligatorio

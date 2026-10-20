@@ -75,6 +75,7 @@ export function ComandasPosView() {
     clients,
     cashShifts,
     combos,
+    saleProducts,
     createSaleOrder,
     updateSaleOrder,
     updateSaleOrderStatus,
@@ -117,8 +118,59 @@ export function ComandasPosView() {
   // 1-Click vs 2-Click state tracking
   const [clickTimer, setClickTimer] = useState<NodeJS.Timeout | null>(null);
 
-  // Categories for Columna Central
-  const categories = ['Todos', 'Combos', 'Cafetería', 'Hamburguesas', 'Entradas & Minutas', 'Bebidas', 'Postres'];
+  // Combined catalog items (Maestro de Productos de Venta + Combos)
+  const combinedCatalog = useMemo(() => {
+    // 1. Mapear Combos activos desde Ventas > Combos
+    const activeCombosAsCatalog: SaleProductCatalogItem[] = (combos || [])
+      .filter((c) => c.active !== false)
+      .map((c) => ({
+        id: c.id,
+        code: c.code || 'CMB',
+        name: c.name,
+        category: 'Combos',
+        unitPrice: Number(c.sellingPrice) || 0,
+        costPrice: Number(c.costPrice) || 0,
+        requiresSideOption: false,
+        isConfigurable: true,
+        imageUrl: c.imageUrl,
+      }));
+
+    // 2. Mapear Productos de Venta activos desde Ventas > Productos de Venta / Carta
+    const activeSaleProductsAsCatalog: SaleProductCatalogItem[] = (saleProducts || [])
+      .filter((p) => p.active !== false)
+      .map((p) => ({
+        id: p.id,
+        code: p.code || 'PRD',
+        name: p.name,
+        category: p.category || 'General',
+        unitPrice: Number(p.sellingPrice) || 0,
+        costPrice: Number(p.costPrice) || 0,
+        requiresSideOption: false,
+        isConfigurable: false,
+        imageUrl: p.imageUrl,
+      }));
+
+    // Fallback si la base de datos no tuviera productos de venta cargados aún
+    const baseCatalog =
+      activeSaleProductsAsCatalog.length > 0
+        ? activeSaleProductsAsCatalog
+        : SALE_PRODUCT_CATALOG.filter((item) => item.category !== 'Combos');
+
+    return [...activeCombosAsCatalog, ...baseCatalog];
+  }, [combos, saleProducts]);
+
+  // Categories dinámicas para Columna Central basadas en el catálogo real
+  const categories = useMemo(() => {
+    const cats = new Set<string>();
+    combinedCatalog.forEach((item) => {
+      if (item.category && item.category !== 'Combos') {
+        cats.add(item.category);
+      }
+    });
+    const sortedCats = Array.from(cats).sort((a, b) => a.localeCompare(b));
+    const hasCombos = combinedCatalog.some((item) => item.category === 'Combos');
+    return ['Todos', ...(hasCombos ? ['Combos'] : []), ...sortedCats];
+  }, [combinedCatalog]);
 
   // Active Cash Shift
   const activeShift = useMemo(() => cashShifts.find((s) => s.status === 'Abierta'), [cashShifts]);
@@ -141,30 +193,6 @@ export function ComandasPosView() {
       return true;
     });
   }, [saleOrders, bandejaFilter, searchQuery]);
-
-  // Combined catalog items (Standard catalog + Combos from Ventas > Combos)
-  const combinedCatalog = useMemo(() => {
-    const activeCombosAsCatalog: SaleProductCatalogItem[] = (combos || [])
-      .filter((c) => c.active !== false)
-      .map((c) => ({
-        id: c.id,
-        code: c.code || 'CMB',
-        name: c.name,
-        category: 'Combos' as const,
-        unitPrice: Number(c.sellingPrice) || 0,
-        costPrice: Number(c.costPrice) || 0,
-        requiresSideOption: false,
-        isConfigurable: true,
-        imageUrl: c.imageUrl,
-      }));
-
-    // Avoid duplicating prod-combo-01 if it's already in active combos
-    const baseCatalog = SALE_PRODUCT_CATALOG.filter(
-      (item) => !activeCombosAsCatalog.some((c) => c.id === item.id)
-    );
-
-    return [...baseCatalog, ...activeCombosAsCatalog];
-  }, [combos]);
 
   // Filtered catalog items for Columna Central
   const filteredCatalog = useMemo(() => {
