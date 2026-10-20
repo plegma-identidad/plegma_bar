@@ -53,6 +53,15 @@ const CATEGORIES_DEFAULT = [
   'Varios',
 ];
 
+// Helper unificado para convertir cualquier tipo y ID al valor estándar de SearchableSelect ('sale_product:id' | 'production:id' | 'item:id')
+export const toSelectValue = (type?: string, id?: string): string => {
+  if (!id) return '';
+  const t = String(type || '').toUpperCase();
+  if (t.includes('SALE') || t.includes('VENTA') || t.includes('CARTA')) return `sale_product:${id}`;
+  if (t.includes('PROD')) return `production:${id}`;
+  return `item:${id}`;
+};
+
 export const ComboModal: React.FC<ComboModalProps> = ({
   comboToEdit,
   isOpen,
@@ -110,15 +119,23 @@ export const ComboModal: React.FC<ComboModalProps> = ({
         setActive(comboToEdit.active !== undefined ? comboToEdit.active : true);
         setImageUrl(comboToEdit.imageUrl || '');
 
-        // Secciones clonadas profundamente
+        // Secciones clonadas profundamente asegurando cantidades y disponibilidad
         const clonedSections: ComboSection[] = (comboToEdit.sections || []).map((s, idx) => ({
           ...s,
           id: s.id || `sec-${Date.now()}-${idx}`,
           orderIndex: s.orderIndex || idx + 1,
-          items: (s.items || []).map((item, iIdx) => ({
-            ...item,
-            id: item.id || `item-${Date.now()}-${iIdx}`,
-          })),
+          items: (s.items || []).map((item, iIdx) => {
+            const rawQty = item.quantity !== undefined && item.quantity !== null && item.quantity !== ('' as any)
+              ? Number(item.quantity)
+              : (item.defaultQuantity !== undefined && item.defaultQuantity !== null ? Number(item.defaultQuantity) : 1);
+            return {
+              ...item,
+              id: item.id || `item-${Date.now()}-${iIdx}`,
+              quantity: rawQty,
+              defaultQuantity: rawQty,
+              isAvailable: item.isAvailable ?? item.available ?? true,
+            };
+          }),
         }));
         setSections(clonedSections);
       } else {
@@ -280,10 +297,12 @@ export const ComboModal: React.FC<ComboModalProps> = ({
       componentId: '',
       componentName: '',
       quantity: 1,
+      defaultQuantity: 1,
       unit: 'u',
       unitCost: 0,
       extraPrice: 0,
       isAvailable: true,
+      available: true,
       sortOrder: (sections[sectionIdx].items?.length || 0) + 1,
     };
 
@@ -321,7 +340,13 @@ export const ComboModal: React.FC<ComboModalProps> = ({
   };
 
   // Opciones disponibles para el selector SearchableSelect según el tipo permitido en la sección
-  const getSelectableOptionsForSection = (allowedType: ComboSectionAllowedType) => {
+  const getSelectableOptionsForSection = (allowedType?: string) => {
+    const t = String(allowedType || 'ALL').toUpperCase();
+    const allowAll = t === 'ALL' || !t;
+    const allowCarta = allowAll || t.includes('VENTA') || t.includes('SALE') || t.includes('CARTA');
+    const allowInsumos = allowAll || t.includes('INSUMO') || t.includes('ITEM') || t.includes('INSUMOS_PRODUCCIONES');
+    const allowProducciones = allowAll || t.includes('PROD') || t.includes('INSUMOS_PRODUCCIONES');
+
     const list: Array<{
       value: string;
       label: string;
@@ -331,7 +356,7 @@ export const ComboModal: React.FC<ComboModalProps> = ({
     }> = [];
 
     // 1. Insumos (items)
-    if (allowedType === 'ALL' || allowedType === 'item') {
+    if (allowInsumos) {
       items.forEach((item) => {
         list.push({
           value: `item:${item.id}`,
@@ -344,7 +369,7 @@ export const ComboModal: React.FC<ComboModalProps> = ({
     }
 
     // 2. Producciones (production_products)
-    if (allowedType === 'ALL' || allowedType === 'production') {
+    if (allowProducciones) {
       productionProducts.forEach((prod) => {
         list.push({
           value: `production:${prod.id}`,
@@ -357,7 +382,7 @@ export const ComboModal: React.FC<ComboModalProps> = ({
     }
 
     // 3. Productos de Venta / Carta (sale_products)
-    if (allowedType === 'ALL' || allowedType === 'sale_product') {
+    if (allowCarta) {
       saleProducts.forEach((sp) => {
         list.push({
           value: `sale_product:${sp.id}`,
@@ -1147,20 +1172,32 @@ export const ComboModal: React.FC<ComboModalProps> = ({
 
                             <div className="col-span-2 sm:col-span-1">
                               <label className="font-bold text-slate-600 block mb-1">Tipo Permitido</label>
-                              <select
-                                value={section.componentTypeAllowed || 'ALL'}
-                                onChange={(e) =>
-                                  handleUpdateSection(sIdx, {
-                                    componentTypeAllowed: e.target.value as ComboSectionAllowedType,
-                                  })
-                                }
-                                className="w-full px-2 py-1.5 rounded-xl border border-slate-300 bg-white font-medium"
-                              >
-                                <option value="ALL">Cualquier Tipo</option>
-                                <option value="sale_product">Solo Carta</option>
-                                <option value="production">Solo Producción</option>
-                                <option value="item">Solo Insumo</option>
-                              </select>
+                              {(() => {
+                                const rawAllowed = String(section.componentTypeAllowed || 'ALL').toUpperCase();
+                                let currentAllowed = 'ALL';
+                                if (rawAllowed.includes('VENTA') || rawAllowed === 'SALE_PRODUCT') currentAllowed = 'sale_product';
+                                else if (rawAllowed === 'PRODUCCION' || rawAllowed === 'PRODUCTION') currentAllowed = 'production';
+                                else if (rawAllowed === 'INSUMO' || rawAllowed === 'ITEM') currentAllowed = 'item';
+                                else if (rawAllowed.includes('INSUMOS_PRODUCCIONES')) currentAllowed = 'INSUMOS_PRODUCCIONES';
+
+                                return (
+                                  <select
+                                    value={currentAllowed}
+                                    onChange={(e) =>
+                                      handleUpdateSection(sIdx, {
+                                        componentTypeAllowed: e.target.value as ComboSectionAllowedType,
+                                      })
+                                    }
+                                    className="w-full px-2 py-1.5 rounded-xl border border-slate-300 bg-white font-medium"
+                                  >
+                                    <option value="ALL">Cualquier Tipo</option>
+                                    <option value="sale_product">Solo Carta</option>
+                                    <option value="production">Solo Producción</option>
+                                    <option value="item">Solo Insumo</option>
+                                    <option value="INSUMOS_PRODUCCIONES">Insumos y Producciones</option>
+                                  </select>
+                                );
+                              })()}
                             </div>
                           </div>
 
@@ -1186,9 +1223,32 @@ export const ComboModal: React.FC<ComboModalProps> = ({
                             ) : (
                               <div className="space-y-2">
                                 {section.items.map((it, iIdx) => {
-                                  const selectCurrentValue = it.componentId
-                                    ? `${it.componentType}:${it.componentId}`
-                                    : '';
+                                  const selectCurrentValue = toSelectValue(it.componentType, it.componentId);
+
+                                  // Asegurar que si el componente ya tiene datos, exista en las opciones del SearchableSelect
+                                  const currentOptExists = selectableOptions.some((opt) => opt.value === selectCurrentValue);
+                                  const optionsForThisItem = currentOptExists || !selectCurrentValue
+                                    ? selectableOptions
+                                    : [
+                                        {
+                                          value: selectCurrentValue,
+                                          label: `[${
+                                            String(it.componentType || '').toUpperCase().includes('PROD')
+                                              ? 'Producción'
+                                              : String(it.componentType || '').toUpperCase().includes('VENTA') || String(it.componentType || '').toUpperCase().includes('SALE')
+                                              ? 'Carta'
+                                              : 'Insumo'
+                                          }] ${it.componentName} - Costo: $${(Number(it.unitCost) || 0).toLocaleString('es-AR')}`,
+                                          type: it.componentType,
+                                          unit: it.unit || 'u',
+                                          cost: Number(it.unitCost) || 0,
+                                        },
+                                        ...selectableOptions,
+                                      ];
+
+                                  const currentQuantity = it.quantity !== undefined && it.quantity !== null && (it.quantity as any) !== ''
+                                    ? it.quantity
+                                    : (it.defaultQuantity !== undefined && it.defaultQuantity !== null ? it.defaultQuantity : 1);
 
                                   return (
                                     <div
@@ -1201,7 +1261,7 @@ export const ComboModal: React.FC<ComboModalProps> = ({
                                           value={selectCurrentValue}
                                           onChange={(val) => handleSelectComponent(sIdx, iIdx, val)}
                                           placeholder="Buscar insumo, producción o producto de carta..."
-                                          options={selectableOptions}
+                                          options={optionsForThisItem}
                                         />
                                       </div>
 
@@ -1212,12 +1272,14 @@ export const ComboModal: React.FC<ComboModalProps> = ({
                                           type="number"
                                           step="any"
                                           min="0.01"
-                                          value={it.quantity || ''}
-                                          onChange={(e) =>
+                                          value={currentQuantity}
+                                          onChange={(e) => {
+                                            const val = parseFloat(e.target.value);
                                             handleUpdateItem(sIdx, iIdx, {
-                                              quantity: parseFloat(e.target.value) || 1,
-                                            })
-                                          }
+                                              quantity: isNaN(val) ? ('' as any) : val,
+                                              defaultQuantity: isNaN(val) ? 1 : val,
+                                            });
+                                          }}
                                           className="w-full text-right font-mono font-bold text-xs outline-hidden"
                                         />
                                         <span className="text-[10px] text-slate-500 font-medium">

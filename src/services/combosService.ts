@@ -262,6 +262,8 @@ export const combosService = {
         // Agrupar items por sección
         const itemsBySection = new Map<string, ComboSectionItem[]>();
         (itemsData || []).forEach((row: any) => {
+          const qty = Number(row.default_quantity) || 1;
+          const isAvail = row.available ?? true;
           const it: ComboSectionItem = {
             id: row.id,
             sectionId: row.section_id,
@@ -269,11 +271,13 @@ export const combosService = {
             componentType: row.component_type,
             componentId: row.component_id,
             componentName: row.component_name,
-            defaultQuantity: Number(row.default_quantity) || 1,
+            defaultQuantity: qty,
+            quantity: qty,
             unit: row.unit || 'u',
             unitCost: Number(row.unit_cost) || 0,
             extraPrice: Number(row.extra_price) || 0,
-            available: row.available ?? true,
+            available: isAvail,
+            isAvailable: isAvail,
             sortOrder: Number(row.sort_order) || 1,
           };
           const list = itemsBySection.get(row.section_id) || [];

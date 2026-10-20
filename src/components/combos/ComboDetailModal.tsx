@@ -57,32 +57,26 @@ export const ComboDetailModal: React.FC<ComboDetailModalProps> = ({
   };
 
   const getComponentBadge = (type: string) => {
-    switch (type) {
-      case 'item':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-            <Package className="w-2.5 h-2.5" /> Insumo
-          </span>
-        );
-      case 'production':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-            <ChefHat className="w-2.5 h-2.5" /> Producción
-          </span>
-        );
-      case 'sale_product':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-            <Utensils className="w-2.5 h-2.5" /> Producto Carta
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-50 text-slate-700 border border-slate-200">
-            Item
-          </span>
-        );
+    const t = String(type || '').toUpperCase();
+    if (t.includes('SALE') || t.includes('VENTA') || t.includes('CARTA')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+          <Utensils className="w-2.5 h-2.5" /> Producto Carta
+        </span>
+      );
     }
+    if (t.includes('PROD')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+          <ChefHat className="w-2.5 h-2.5" /> Producción
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+        <Package className="w-2.5 h-2.5" /> Insumo
+      </span>
+    );
   };
 
   return (
