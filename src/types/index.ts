@@ -989,7 +989,62 @@ export interface SaleOrder {
   billingDetails?: OrderBillingInfo;
 }
 
+// ----------------------------------------------------
+// VENTAS — COMBOS CONFIGURABLES
+// ----------------------------------------------------
 
+export type ComboComponentType = 'PRODUCTO_VENTA' | 'PRODUCCION' | 'INSUMO' | 'sale_product' | 'production' | 'item';
 
+export type ComboSectionAllowedType = 'ALL' | 'PRODUCTOS_VENTA' | 'INSUMOS_PRODUCCIONES' | 'sale_product' | 'production' | 'item';
 
+export interface ComboSectionItem {
+  id: string;
+  sectionId?: string;
+  comboId?: string;
+  componentType: ComboComponentType;
+  componentId: string;       // ID de SaleProduct, ProductionProduct o Item
+  componentName: string;
+  defaultQuantity?: number;  // Cantidad por defecto
+  quantity?: number;         // Alias cantidad
+  unit?: string;             // Unidad (u, kg, etc.)
+  unitCost?: number;         // Costo unitario
+  extraPrice: number;        // Recargo de precio respecto al combo ($)
+  available?: boolean;       // Switch disponible
+  isAvailable?: boolean;     // Alias disponible
+  isDefault?: boolean;       // Marcado como predeterminado
+  sortOrder?: number;
+  imageUrl?: string;         // Imagen miniatura
+}
 
+export interface ComboSection {
+  id: string;
+  comboId?: string;
+  name: string;              // Ej: "Tipo de café", "Acompañamiento", "Dips", "Adicionales"
+  description?: string;
+  sortOrder?: number;        // 1, 2, 3...
+  orderIndex?: number;       // Alias orden
+  required: boolean;         // Obligatoria (Sí / No)
+  minQuantity: number;       // Cantidad mínima a elegir
+  maxQuantity: number;       // Cantidad máxima a elegir
+  allowRepeat: boolean;      // Permitir repetir opciones
+  componentTypeAllowed?: ComboSectionAllowedType; // 'ALL' | 'sale_product' | 'production' | 'item'
+  items: ComboSectionItem[]; // Opciones disponibles en esta sección
+}
+
+export interface Combo {
+  id: string;
+  code: string;              // Código único (ej: "CMB-001"), carpeta en Storage: Ventas/Combos/[code]
+  name: string;              // Nombre comercial (ej: "Combo Merienda Clásico")
+  category: string;          // Categoría (ej: "Combos")
+  subcategory?: string;      // Subcategoría (ej: "Meriendas")
+  sellingPrice: number;      // Precio de venta ($)
+  costPrice: number;         // Costo calculado ($)
+  profitMargin: number;      // Margen de ganancia (%)
+  imageUrl?: string;         // URL pública de foto en Supabase Storage
+  imageName?: string;        // Nombre de archivo
+  description?: string;
+  active: boolean;           // Estado Activo / Inactivo
+  sections: ComboSection[];  // Secciones configuradas
+  createdAt?: string;
+  updatedAt?: string;
+}

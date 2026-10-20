@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Info, Settings, CalendarDays, DollarSign, Users, PackageOpen, LayoutDashboard } from 'lucide-react';
+import { X, Info, Settings, CalendarDays, DollarSign, Users, PackageOpen, LayoutDashboard, Layers } from 'lucide-react';
 
 export type HelpModule = 
   | 'config'
@@ -10,11 +10,17 @@ export type HelpModule =
   | 'kanban'
   | 'purchasing'
   | 'payruns'
-  | 'sale_products';
+  | 'sale_products'
+  | 'combos';
 
 interface ModuleHelpModalProps {
-  module: HelpModule;
+  module?: HelpModule;
+  isOpen?: boolean;
   onClose: () => void;
+  title?: string;
+  moduleName?: string;
+  description?: string;
+  sections?: { title: string; content: string }[];
 }
 
 const MODULE_DATA: Record<HelpModule, { title: string; subtitle: string; icon: React.ReactNode; sections: { title: string; content: string }[] }> = {
@@ -110,11 +116,36 @@ const MODULE_DATA: Record<HelpModule, { title: string; subtitle: string; icon: R
       { title: '3. Costo y Margen de Rentabilidad', content: 'El costo se calcula sumando los componentes de la receta. El sistema computa automáticamente el margen sobre venta: ((Precio Venta - Costo) / Precio Venta) × 100.' },
       { title: '4. Ficha Técnica y Tutoriales', content: 'Puedes adjuntar el PDF de la ficha de cocina y el enlace a un video de YouTube con el instructivo de preparación para capacitar al equipo.' }
     ]
+  },
+  combos: {
+    title: 'Guía de Uso: Maestro de Combos & Promociones',
+    subtitle: 'Combos configurables, secciones, opciones & recargos',
+    icon: <Layers className="w-5 h-5" />,
+    sections: [
+      { title: '1. Estructura y Secciones', content: 'Un combo se divide en etapas o secciones (ej. Selección de Hamburguesa, Guarnición, Bebida). Cada sección puede ser obligatoria u opcional, admitir cantidades mínimas y máximas, y permitir o no la repetición de opciones.' },
+      { title: '2. Componentes Multi-Origen', content: 'Cada sección puede contener opciones provenientes de: Insumos de stock, Producciones intermedias, o Productos de Carta. Al seleccionar una opción, se registra su costo de referencia para el cálculo del escandallo.' },
+      { title: '3. Recargos de Precio Extra', content: 'Si una opción es premium (ej. cambiar papas tradicionales por papas cheddar), puedes definir un recargo en $. Al ingresar el combo en la comanda de venta, el total se incrementará automáticamente.' },
+      { title: '4. Almacenamiento Físico en Supabase Storage', content: 'Las fotos se guardan físicamente en la carpeta Ventas/Combos/[Código]. Al editar o eliminar un combo, los archivos anteriores se eliminan físicamente del servidor para no acumular memoria.' }
+    ]
   }
 };
 
-export const ModuleHelpModal: React.FC<ModuleHelpModalProps> = ({ module, onClose }) => {
-  const data = MODULE_DATA[module];
+export const ModuleHelpModal: React.FC<ModuleHelpModalProps> = ({
+  module,
+  isOpen = true,
+  onClose,
+  title,
+  subtitle,
+  description,
+  sections,
+}: any) => {
+  if (isOpen === false) return null;
+
+  const defaultData = module ? MODULE_DATA[module] : null;
+  const modalTitle = title || defaultData?.title || 'Guía de Uso';
+  const modalSubtitle = subtitle || description || defaultData?.subtitle || 'Información operativa del módulo';
+  const modalIcon = defaultData?.icon || <Info className="w-5 h-5" />;
+  const modalSections = sections || defaultData?.sections || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
@@ -123,11 +154,11 @@ export const ModuleHelpModal: React.FC<ModuleHelpModalProps> = ({ module, onClos
         <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">
-              {data.icon}
+              {modalIcon}
             </div>
             <div>
-              <h3 className="font-extrabold text-base">{data.title}</h3>
-              <p className="text-xs text-slate-400">{data.subtitle}</p>
+              <h3 className="font-extrabold text-base">{modalTitle}</h3>
+              <p className="text-xs text-slate-400">{modalSubtitle}</p>
             </div>
           </div>
           <button
@@ -141,12 +172,15 @@ export const ModuleHelpModal: React.FC<ModuleHelpModalProps> = ({ module, onClos
 
         {/* Content */}
         <div className="p-6 overflow-y-auto flex-1 space-y-6 text-slate-700">
-          {data.sections.map((sec, idx) => (
+          {modalSections.map((sec: any, idx: number) => (
             <div key={idx} className="space-y-2">
-              <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+              <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-indigo-500" />
                 {sec.title}
               </h4>
-              <p className="text-sm text-slate-600 leading-relaxed">{sec.content}</p>
+              <p className="text-xs text-slate-600 leading-relaxed pl-4">
+                {sec.content}
+              </p>
             </div>
           ))}
         </div>

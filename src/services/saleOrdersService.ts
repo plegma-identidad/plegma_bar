@@ -158,14 +158,32 @@ export const saleOrdersService = {
       await supabase.from('sale_order_items').delete().eq('order_id', savedOrderId);
 
       if (order.items && order.items.length > 0) {
+        // Validar cuáles candidate IDs realmente existen en la tabla 'items' para no violar la FK
+        const validItemIds = new Set<string>();
+        const candidateUuids = order.items
+          .map((i) => i.productId)
+          .filter((id) => id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+
+        if (candidateUuids.length > 0) {
+          try {
+            const { data: existingItems } = await supabase
+              .from('items')
+              .select('id')
+              .in('id', candidateUuids);
+            if (existingItems) {
+              existingItems.forEach((it) => validItemIds.add(it.id));
+            }
+          } catch (e) {
+            console.warn('No se pudo verificar FK en tabla items:', e);
+          }
+        }
+
         const itemsPayload = order.items.map((item) => {
-          const isValidProductUuid =
-            item.productId &&
-            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(item.productId);
+          const isRealItemFk = item.productId && validItemIds.has(item.productId);
 
           return {
             order_id: savedOrderId,
-            product_id: isValidProductUuid ? item.productId : null,
+            product_id: isRealItemFk ? item.productId : null,
             product_name: item.productName,
             category: item.category || 'General',
             unit_price: item.unitPrice,
@@ -178,18 +196,29 @@ export const saleOrdersService = {
           };
         });
 
-        const { data: savedItemsData, error: itemsInsertError } = await supabase
+        let { data: savedItemsData, error: itemsInsertError } = await supabase
           .from('sale_order_items')
           .insert(itemsPayload)
           .select('*');
 
         if (itemsInsertError) {
-          console.error('Error al guardar ítems del pedido en Supabase:', itemsInsertError);
+          console.warn('Advertencia al insertar ítems con product_id, reintentando con product_id null:', itemsInsertError.message);
+          const fallbackPayload = itemsPayload.map((p) => ({ ...p, product_id: null }));
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('sale_order_items')
+            .insert(fallbackPayload)
+            .select('*');
+
+          if (fallbackError) {
+            console.error('Error al guardar ítems del pedido en Supabase:', fallbackError);
+          } else {
+            savedItemsData = fallbackData;
+          }
         }
 
-        const savedItems: SaleOrderItem[] = (savedItemsData || []).map((itemRow) => ({
+        const savedItems: SaleOrderItem[] = (savedItemsData || []).map((itemRow, idx) => ({
           id: itemRow.id,
-          productId: itemRow.product_id || '',
+          productId: order.items[idx]?.productId || itemRow.product_id || '',
           productName: itemRow.product_name,
           category: itemRow.category || 'General',
           unitPrice: itemRow.unit_price,

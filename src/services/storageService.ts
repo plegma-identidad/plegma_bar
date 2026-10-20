@@ -1,4 +1,4 @@
-﻿import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 
 const BUCKET_NAME = 'ventas';
 
@@ -356,6 +356,123 @@ export const storageService = {
       return { imageUrl, recipeFileUrl, recipeFileName, videoUrl };
     } catch (err) {
       console.warn('Error en getProductionFiles:', err);
+      return {};
+    }
+  },
+
+  /**
+   * Sube la foto del combo a: Ventas/Combos/[codigoCombo]/foto_[nombreLimpio]_[timestamp].[ext]
+   */
+  async uploadComboMedia(
+    comboCode: string,
+    file: File
+  ): Promise<{ url: string; path: string; name: string } | null> {
+    try {
+      const cleanCode = sanitizePathSegment(comboCode || 'CMB-SIN-CODIGO');
+      const ext = file.name.split('.').pop() || '';
+      const cleanBaseName = sanitizePathSegment(file.name.replace(/\.[^/.]+$/, ''));
+      const timestamp = Date.now();
+      const fileName = `foto_${cleanBaseName}_${timestamp}.${ext.toLowerCase()}`;
+      
+      const filePath = `Ventas/Combos/${cleanCode}/${fileName}`;
+
+      const { data, error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: true,
+        });
+
+      if (error) {
+        console.error('Error al subir foto del combo a Supabase Storage:', error);
+        return null;
+      }
+
+      const { data: pubData } = supabase.storage
+        .from(BUCKET_NAME)
+        .getPublicUrl(filePath);
+
+      return {
+        url: pubData.publicUrl,
+        path: filePath,
+        name: file.name,
+      };
+    } catch (err) {
+      console.error('Error inesperado al subir foto de combo:', err);
+      return null;
+    }
+  },
+
+  /**
+   * Elimina un archivo multimedia de combo en Storage
+   */
+  async deleteComboMedia(urlOrPath: string): Promise<boolean> {
+    return this.deleteProductMedia(urlOrPath);
+  },
+
+  /**
+   * Elimina toda la carpeta física de un combo: Ventas/Combos/[codigoCombo]
+   */
+  async deleteComboFolder(comboCode: string): Promise<boolean> {
+    try {
+      const cleanCode = sanitizePathSegment(comboCode);
+      const folderPath = `Ventas/Combos/${cleanCode}`;
+
+      const { data: files, error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .list(folderPath);
+
+      if (error || !files || files.length === 0) return true;
+
+      const filePaths = files.map((f) => `${folderPath}/${f.name}`);
+      const { error: delError } = await supabase.storage
+        .from(BUCKET_NAME)
+        .remove(filePaths);
+
+      if (delError) {
+        console.error('Error al eliminar archivos de la carpeta del combo:', delError);
+        return false;
+      }
+
+      return true;
+    } catch (err) {
+      console.error('Error inesperado al eliminar carpeta de combo:', err);
+      return false;
+    }
+  },
+
+  /**
+   * Recupera archivos existentes en Storage de un combo
+   */
+  async getComboFiles(comboCode: string): Promise<{ imageUrl?: string; imageName?: string }> {
+    try {
+      const cleanCode = sanitizePathSegment(comboCode);
+      const folderPath = `Ventas/Combos/${cleanCode}`;
+
+      const { data: files, error } = await supabase.storage
+        .from(BUCKET_NAME)
+        .list(folderPath, { limit: 20 });
+
+      if (error || !files || files.length === 0) return {};
+
+      let imageUrl: string | undefined;
+      let imageName: string | undefined;
+
+      for (const f of files) {
+        if (!f.name || f.name === '.emptyFolderPlaceholder') continue;
+        const filePath = `${folderPath}/${f.name}`;
+        const { data: pubData } = supabase.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+        const url = pubData.publicUrl;
+
+        if (f.name.startsWith('foto_') && !imageUrl) {
+          imageUrl = url;
+          imageName = f.name.replace(/^foto_/i, '');
+        }
+      }
+
+      return { imageUrl, imageName };
+    } catch (err) {
+      console.warn('Error en getComboFiles:', err);
       return {};
     }
   },

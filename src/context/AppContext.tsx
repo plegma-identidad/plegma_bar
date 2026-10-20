@@ -50,6 +50,7 @@ import {
   Client,
   SaleProduct,
   ProductionProduct,
+  Combo,
 } from '../types';
 import { configService } from '../services/configService';
 import { providersService } from '../services/providersService';
@@ -64,6 +65,7 @@ import { currentAccountService } from '../services/currentAccountService';
 import { auditLogsService } from '../services/auditLogsService';
 import { saleProductsService } from '../services/saleProductsService';
 import { productionsService } from '../services/productionsService';
+import { combosService } from '../services/combosService';
 import { storageService } from '../services/storageService';
 import {
   INITIAL_PROVIDERS,
@@ -274,6 +276,15 @@ interface AppContextType {
   addOrUpdateProductionProduct: (product: Partial<ProductionProduct>) => Promise<{ success: boolean; message: string; product?: ProductionProduct }>;
   deleteProductionProduct: (productId: string) => Promise<{ success: boolean; message: string }>;
   toggleProductionProductActive: (productId: string) => Promise<{ success: boolean; message: string }>;
+  duplicateProductionProduct: (productId: string) => Promise<{ success: boolean; message: string; product?: ProductionProduct }>;
+
+  // Combos (Ventas > Combos)
+  combos: Combo[];
+  addOrUpdateCombo: (combo: Partial<Combo>) => Promise<{ success: boolean; message: string; combo?: Combo }>;
+  deleteCombo: (comboId: string) => Promise<{ success: boolean; message: string }>;
+  toggleComboActive: (comboId: string) => Promise<{ success: boolean; message: string }>;
+  duplicateCombo: (comboId: string) => Promise<{ success: boolean; message: string; combo?: Combo }>;
+
   // Categorías y Subcategorías de Carta
   saleCategories: ConfigOption[];
   saleSubcategories: ConfigOption[];
@@ -433,7 +444,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const fetchInitialDataFromSupabase = async () => {
       try {
-        const [cats, subcats, units, saleCats, saleSubc, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts, prodCats, prodSubc, prodUnits, prodWh] = await Promise.all([
+        const [cats, subcats, units, saleCats, saleSubc, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts, prodCats, prodSubc, prodUnits, prodWh, fetchedCombos] = await Promise.all([
           configService.getByType('category'),
           configService.getByType('subcategory'),
           configService.getByType('unit'),
@@ -460,6 +471,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           configService.getByType('production_subcategory'),
           configService.getByType('production_unit'),
           configService.getByType('production_warehouse'),
+          combosService.getAll(),
         ]);
         setItemCategories(cats);
         setItemSubcategories(subcats);
@@ -554,6 +566,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setAuditLogs(fetchedAuditLogs);
         setSaleProducts(fetchedSaleProducts);
         setProductionProducts(fetchedProductionProducts);
+        setCombos(fetchedCombos);
       } catch (err) {
         console.error('Error al cargar datos iniciales de Supabase:', err);
       }
@@ -2605,6 +2618,85 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // ----------------------------------------------------
+  // COMBOS (VENTAS > COMBOS)
+  // ----------------------------------------------------
+  const [combos, setCombos] = useState<Combo[]>([]);
+
+  const addOrUpdateCombo = async (combo: Partial<Combo>): Promise<{ success: boolean; message: string; combo?: Combo }> => {
+    try {
+      const saved = await combosService.save(combo);
+      if (saved) {
+        setCombos((prev) => {
+          const idx = prev.findIndex((c) => c.id === saved.id || (combo.id && c.id === combo.id));
+          if (idx >= 0) {
+            const copy = [...prev];
+            copy[idx] = saved;
+            return copy;
+          }
+          return [saved, ...prev];
+        });
+        showToast(`Combo "${saved.name}" guardado exitosamente.`, 'success');
+        return { success: true, message: 'Combo guardado.', combo: saved };
+      }
+      showToast('Error al guardar el combo en Supabase.', 'error');
+      return { success: false, message: 'Error al guardar el combo.' };
+    } catch (err: any) {
+      showToast(err.message || 'Error al guardar combo.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  const deleteCombo = async (comboId: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const target = combos.find((c) => c.id === comboId);
+      const ok = await combosService.delete(comboId, target?.code);
+      if (ok) {
+        setCombos((prev) => prev.filter((c) => c.id !== comboId));
+        showToast('Combo eliminado correctamente.', 'success');
+        return { success: true, message: 'Combo eliminado.' };
+      }
+      showToast('No se pudo eliminar el combo.', 'error');
+      return { success: false, message: 'No se pudo eliminar el combo.' };
+    } catch (err: any) {
+      showToast(err.message || 'Error al eliminar combo.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  const toggleComboActive = async (comboId: string): Promise<{ success: boolean; message: string }> => {
+    const c = combos.find((item) => item.id === comboId);
+    if (!c) return { success: false, message: 'Combo no encontrado.' };
+    const newActive = !c.active;
+    setCombos((prev) =>
+      prev.map((item) => (item.id === comboId ? { ...item, active: newActive } : item))
+    );
+    const ok = await combosService.toggleActive(comboId, newActive);
+    if (ok) {
+      showToast(`Combo ${newActive ? 'activado' : 'inactivado'} correctamente.`, 'success');
+      return { success: true, message: 'Estado actualizado.' };
+    }
+    return { success: false, message: 'Error al actualizar estado.' };
+  };
+
+  const duplicateCombo = async (comboId: string): Promise<{ success: boolean; message: string; combo?: Combo }> => {
+    const c = combos.find((item) => item.id === comboId);
+    if (!c) return { success: false, message: 'Combo no encontrado.' };
+    try {
+      const duplicated = await combosService.duplicate(c);
+      if (duplicated) {
+        setCombos((prev) => [duplicated, ...prev]);
+        showToast(`Combo "${duplicated.name}" duplicado con éxito.`, 'success');
+        return { success: true, message: 'Combo duplicado.', combo: duplicated };
+      }
+      showToast('Error al duplicar el combo.', 'error');
+      return { success: false, message: 'Error al duplicar combo.' };
+    } catch (err: any) {
+      showToast(err.message || 'Error al duplicar combo.', 'error');
+      return { success: false, message: err.message };
+    }
+  };
+
+  // ----------------------------------------------------
   // PEDIDOS Y VENTAS (COMMERCIAL ENGINE)
   // ----------------------------------------------------
   const [saleOrders, setSaleOrders] = useState<SaleOrder[]>([]);
@@ -3789,6 +3881,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteProductionProduct,
         toggleProductionProductActive,
         duplicateProductionProduct,
+        combos,
+        addOrUpdateCombo,
+        deleteCombo,
+        toggleComboActive,
+        duplicateCombo,
         ccMovements,
         setCcMovements,
         ccReceipts,

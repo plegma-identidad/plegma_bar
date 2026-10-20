@@ -25,7 +25,7 @@ import {
 import { Button } from './ui/Button';
 import { TextInput } from './ui/Form';
 import { useApp } from '../context/AppContext';
-import { SaleOrder, SaleOrderItem, OrderStatus } from '../types';
+import { SaleOrder, SaleOrderItem, OrderStatus, Combo } from '../types';
 import { SALE_PRODUCT_CATALOG, SaleProductCatalogItem } from '../data/ordersData';
 import { ComandasConfigModal } from './salesConfig/ComandasConfigModal';
 import { ProductConfiguratorModal } from './orders/ProductConfiguratorModal';
@@ -33,6 +33,7 @@ import { SplitBillingModal } from './orders/SplitBillingModal';
 import { ComandaModal } from './orders/ComandaModal';
 import { NewComandaModal } from './orders/NewComandaModal';
 import { OrderItemCommentModal } from './orders/OrderItemCommentModal';
+import { ComboComandaModal, DEMO_COMBO_MERIENDA_CLASICO } from './orders/ComboComandaModal';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
@@ -73,6 +74,7 @@ export function ComandasPosView() {
     tableConfigs,
     clients,
     cashShifts,
+    combos,
     createSaleOrder,
     updateSaleOrder,
     updateSaleOrderStatus,
@@ -91,6 +93,7 @@ export function ComandasPosView() {
   const [isNewComandaModalOpen, setIsNewComandaModalOpen] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [selectedCatalogItem, setSelectedCatalogItem] = useState<SaleProductCatalogItem | null>(null);
+  const [selectedComboForComanda, setSelectedComboForComanda] = useState<Combo | null>(null);
   const [billingOrder, setBillingOrder] = useState<SaleOrder | null>(null);
   const [comandaOrderPreview, setComandaOrderPreview] = useState<SaleOrder | null>(null);
   const [editingCommentItem, setEditingCommentItem] = useState<SaleOrderItem | null>(null);
@@ -139,9 +142,33 @@ export function ComandasPosView() {
     });
   }, [saleOrders, bandejaFilter, searchQuery]);
 
+  // Combined catalog items (Standard catalog + Combos from Ventas > Combos)
+  const combinedCatalog = useMemo(() => {
+    const activeCombosAsCatalog: SaleProductCatalogItem[] = (combos || [])
+      .filter((c) => c.active !== false)
+      .map((c) => ({
+        id: c.id,
+        code: c.code || 'CMB',
+        name: c.name,
+        category: 'Combos' as const,
+        unitPrice: Number(c.sellingPrice) || 0,
+        costPrice: Number(c.costPrice) || 0,
+        requiresSideOption: false,
+        isConfigurable: true,
+        imageUrl: c.imageUrl,
+      }));
+
+    // Avoid duplicating prod-combo-01 if it's already in active combos
+    const baseCatalog = SALE_PRODUCT_CATALOG.filter(
+      (item) => !activeCombosAsCatalog.some((c) => c.id === item.id)
+    );
+
+    return [...baseCatalog, ...activeCombosAsCatalog];
+  }, [combos]);
+
   // Filtered catalog items for Columna Central
   const filteredCatalog = useMemo(() => {
-    return SALE_PRODUCT_CATALOG.filter((item) => {
+    return combinedCatalog.filter((item) => {
       if (categoryFilter !== 'Todos' && item.category !== categoryFilter) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
@@ -149,7 +176,7 @@ export function ComandasPosView() {
       }
       return true;
     });
-  }, [categoryFilter, searchQuery]);
+  }, [combinedCatalog, categoryFilter, searchQuery]);
 
   // Handle Card Click (Click en tarjeta = Consulta preview)
   const handleOrderCardClick = (order: SaleOrder) => {
@@ -192,6 +219,24 @@ export function ComandasPosView() {
   // Add Item to Active Order
   const handleSelectProductFromCatalog = async (prod: SaleProductCatalogItem) => {
     if (!activeOrder) return;
+
+    // Check if item is a Combo (Category 'Combos', or matching id in combos, or prod-combo-01)
+    if (prod.category === 'Combos' || prod.id === 'prod-combo-01' || (combos || []).some((c) => c.id === prod.id)) {
+      const existingCombo = (combos || []).find((c) => c.id === prod.id);
+      if (existingCombo) {
+        setSelectedComboForComanda(existingCombo);
+      } else {
+        // Fallback al combo modelo idéntico al requerimiento de la imagen 8
+        setSelectedComboForComanda({
+          ...DEMO_COMBO_MERIENDA_CLASICO,
+          id: prod.id,
+          name: prod.name,
+          sellingPrice: prod.unitPrice,
+          imageUrl: prod.imageUrl || DEMO_COMBO_MERIENDA_CLASICO.imageUrl,
+        });
+      }
+      return;
+    }
 
     if (prod.isConfigurable || prod.requiresSideOption) {
       setSelectedCatalogItem(prod);
@@ -238,6 +283,24 @@ export function ComandasPosView() {
     setActiveOrder(updatedOrder);
     setSelectedCatalogItem(null);
     showToast(`Ítem "${newItem.productName}" agregado`, 'success');
+  };
+
+  // Confirm item from ComboComandaModal (Imagen 8)
+  const handleConfirmComboItem = async (newItem: SaleOrderItem) => {
+    if (!activeOrder) return;
+    const updatedItems = [...activeOrder.items, newItem];
+    const updatedTotal = updatedItems.reduce((acc, i) => acc + i.subtotal, 0);
+
+    const updatedOrder: SaleOrder = {
+      ...activeOrder,
+      items: updatedItems,
+      totalAmount: updatedTotal,
+    };
+
+    await updateSaleOrder(updatedOrder);
+    setActiveOrder(updatedOrder);
+    setSelectedComboForComanda(null);
+    showToast(`Combo "${newItem.productName}" agregado a la comanda`, 'success');
   };
 
   // Update item quantity in active order
@@ -685,21 +748,38 @@ export function ComandasPosView() {
                 <div
                   key={prod.id}
                   onClick={() => handleSelectProductFromCatalog(prod)}
-                  className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm hover:shadow-md hover:border-amber-400 cursor-pointer transition-all flex flex-col justify-between space-y-3 group"
+                  className="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-xs hover:shadow-md hover:border-amber-400 cursor-pointer transition-all flex flex-col justify-between space-y-2.5 group"
                 >
-                  <div className="space-y-1">
-                    <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider">{prod.category}</span>
-                    <h4 className="font-extrabold text-xs text-slate-900 group-hover:text-amber-700 transition-colors">
-                      {prod.name}
-                    </h4>
+                  <div className="space-y-2">
+                    {prod.imageUrl && (
+                      <div className="w-full h-24 rounded-xl overflow-hidden bg-slate-100 border border-slate-100 relative">
+                        <img
+                          src={prod.imageUrl}
+                          alt={prod.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      </div>
+                    )}
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-black text-amber-600 uppercase tracking-wider">
+                        {prod.category}
+                      </span>
+                      <h4 className="font-extrabold text-xs text-slate-900 group-hover:text-amber-700 transition-colors leading-tight">
+                        {prod.name}
+                      </h4>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                     <span className="font-black text-sm text-slate-900">{fmt(prod.unitPrice)}</span>
-                    {prod.isConfigurable && (
+                    {prod.category === 'Combos' ? (
+                      <span className="text-[10px] font-black bg-[#E91E63]/10 text-[#E91E63] px-2 py-0.5 rounded-full border border-[#E91E63]/20">
+                        Combo
+                      </span>
+                    ) : prod.isConfigurable ? (
                       <span className="text-[10px] font-black bg-amber-100 text-amber-900 px-2 py-0.5 rounded-full border border-amber-200">
                         Configurable
                       </span>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               ))}
@@ -724,12 +804,22 @@ export function ComandasPosView() {
       {/* Modal 2: Configuración de Maestros (Drawer ⚙️) */}
       {isConfigOpen && <ComandasConfigModal onClose={() => setIsConfigOpen(false)} />}
 
-      {/* Modal 3: Configurador de Producto (Combo Merienda / Opciones) */}
+      {/* Modal 3: Configurador de Producto Estándar */}
       {selectedCatalogItem && (
         <ProductConfiguratorModal
           product={selectedCatalogItem}
           onClose={() => setSelectedCatalogItem(null)}
           onConfirmItem={handleConfirmConfiguredItem}
+        />
+      )}
+
+      {/* Modal 3.1: Visualización y Configuración de Combo en Comanda (Fiel a Imagen 8) */}
+      {selectedComboForComanda && (
+        <ComboComandaModal
+          combo={selectedComboForComanda}
+          isOpen={!!selectedComboForComanda}
+          onClose={() => setSelectedComboForComanda(null)}
+          onConfirmCombo={handleConfirmComboItem}
         />
       )}
 

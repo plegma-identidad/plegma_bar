@@ -71,13 +71,14 @@ export const SALE_PRODUCT_CATALOG: SaleProductCatalogItem[] = [
   {
     id: 'prod-combo-01',
     code: 'PRD-CMB1',
-    name: 'Combo Merienda Completo',
+    name: 'Combo Merienda Clásico',
     category: 'Combos',
-    unitPrice: 6900,
-    costPrice: 3200,
+    unitPrice: 7500,
+    costPrice: 2800,
     requiresSideOption: false,
     isConfigurable: true,
     optionGroupIds: ['grp-001', 'grp-002', 'grp-003', 'grp-004'],
+    imageUrl: 'https://images.unsplash.com/photo-1517256064527-09c73fc73e38?auto=format&fit=crop&w=600&q=80',
   },
   {
     id: 'prod-cafe-01',

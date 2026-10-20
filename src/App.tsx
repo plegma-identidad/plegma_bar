@@ -28,6 +28,7 @@ import { SalesConfigView } from './components/SalesConfigView';
 import { OrdersView } from './components/OrdersView';
 import { ComandasPosView } from './components/ComandasPosView';
 import { SaleProductsView } from './components/sales/SaleProductsView';
+import { CombosView } from './components/combos/CombosView';
 import { ProductionsView } from './components/productions/ProductionsView';
 import { useIsMobile } from './hooks/useIsMobile';
 import { Provider, Order, StockCount } from './types';
@@ -198,6 +199,8 @@ function MainLayout() {
         {currentTab === 'producciones' && <ProductionsView />}
 
         {currentTab === 'ventas_carta' && <SaleProductsView />}
+
+        {currentTab === 'ventas_combos' && <CombosView />}
 
         {currentTab === 'ventas_cc' && <CurrentAccountView />}
 
