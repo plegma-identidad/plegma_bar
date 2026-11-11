@@ -257,6 +257,7 @@ CREATE TABLE IF NOT EXISTS public.product_options (
     group_id UUID REFERENCES public.product_option_groups(id) ON DELETE CASCADE,
     name TEXT NOT NULL,
     price_modifier NUMERIC DEFAULT 0,
+    active BOOLEAN DEFAULT true,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -474,7 +475,8 @@ CREATE TABLE IF NOT EXISTS public.sale_orders (
     t2_comanda_at TIMESTAMPTZ,
     t3_kitchen_output_at TIMESTAMPTZ,
     t4_delivered_at TIMESTAMPTZ,
-    billing_details JSONB
+    billing_details JSONB,
+    delivery_address TEXT
 );
 
 CREATE TABLE IF NOT EXISTS public.sale_order_items (
@@ -812,6 +814,7 @@ CREATE TABLE IF NOT EXISTS public.sale_orders (
     t3_kitchen_output_at TIMESTAMPTZ,
     t4_delivered_at TIMESTAMPTZ,
     billing_details JSONB,
+    delivery_address TEXT,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -1058,5 +1061,185 @@ CREATE TABLE IF NOT EXISTS public.cash_movements (
   target_master_box_id UUID,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ====================================================================
+-- FASE 14: GRUPOS DE OPCIONES, EXTRAS Y POLÍTICAS RLS POS
+-- ====================================================================
+
+-- Habilitar RLS en grupos y opciones
+ALTER TABLE public.product_option_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.product_options ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Permitir acceso publico product_option_groups" ON public.product_option_groups;
+CREATE POLICY "Permitir acceso publico product_option_groups"
+    ON public.product_option_groups FOR ALL USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir acceso publico product_options" ON public.product_options;
+CREATE POLICY "Permitir acceso publico product_options"
+    ON public.product_options FOR ALL USING (true) WITH CHECK (true);
+
+
+-- ====================================================================
+-- FASE 15: MIGRACIONES DE COMPATIBILIDAD IDEMPOTENTES (BASES PREEXISTENTES)
+-- ====================================================================
+
+ALTER TABLE IF EXISTS public.sale_orders ADD COLUMN IF NOT EXISTS delivery_address TEXT;
+ALTER TABLE IF EXISTS public.sale_orders ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE IF EXISTS public.production_products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE IF EXISTS public.sale_products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+ALTER TABLE IF EXISTS public.product_options ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
+
+
+-- ====================================================================
+-- FASE 16: TRIGGERS DE ACTUALIZACIÓN EN CASCADA (RECETAS, COSTOS Y COMBOS)
+-- ====================================================================
+
+-- 1. Propagación de cambios en INSUMOS (items) a recetas y combos
+CREATE OR REPLACE FUNCTION public.fn_sync_item_changes_to_recipes()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Solo actuar si cambió el nombre, el costo o la unidad del insumo
+    IF (OLD.name IS DISTINCT FROM NEW.name) OR (OLD.current_price IS DISTINCT FROM NEW.current_price) OR (OLD.storage_unit IS DISTINCT FROM NEW.storage_unit) THEN
+
+        -- A. Actualizar líneas de receta de Producciones (Semielaborados)
+        UPDATE public.production_product_recipes
+        SET 
+            item_name = NEW.name,
+            unit = NEW.storage_unit,
+            unit_cost = NEW.current_price,
+            subtotal = ROUND((quantity * NEW.current_price)::numeric, 2)
+        WHERE item_id = NEW.id;
+
+        -- Recalcular costo total de las producciones afectadas
+        UPDATE public.production_products p
+        SET 
+            cost_price = COALESCE((
+                SELECT SUM(subtotal) 
+                FROM public.production_product_recipes 
+                WHERE production_product_id = p.id
+            ), 0),
+            unit_cost = COALESCE((
+                SELECT SUM(subtotal) 
+                FROM public.production_product_recipes 
+                WHERE production_product_id = p.id
+            ), 0)
+        WHERE id IN (
+            SELECT DISTINCT production_product_id 
+            FROM public.production_product_recipes 
+            WHERE item_id = NEW.id
+        );
+
+        -- B. Actualizar líneas de receta de Productos de Venta (Carta)
+        UPDATE public.sale_product_recipes
+        SET 
+            component_name = NEW.name,
+            unit = NEW.storage_unit,
+            unit_cost = NEW.current_price,
+            subtotal = ROUND((quantity * NEW.current_price)::numeric, 2)
+        WHERE component_type = 'INSUMO' AND component_id::text = NEW.id::text;
+
+        -- C. Actualizar productos de venta tipo Reventa vinculados directamente
+        UPDATE public.sale_products
+        SET 
+            cost_price = NEW.current_price,
+            profit_margin = CASE 
+                WHEN selling_price > 0 THEN ROUND((((selling_price - NEW.current_price) / selling_price) * 100)::numeric, 2)
+                ELSE 0 
+            END
+        WHERE linked_item_id = NEW.id;
+
+        -- Recalcular costo total y margen de productos de fabricación afectados
+        UPDATE public.sale_products sp
+        SET 
+            cost_price = COALESCE((
+                SELECT SUM(subtotal) 
+                FROM public.sale_product_recipes 
+                WHERE sale_product_id = sp.id
+            ), 0),
+            profit_margin = CASE 
+                WHEN sp.selling_price > 0 THEN ROUND((((sp.selling_price - COALESCE((SELECT SUM(subtotal) FROM public.sale_product_recipes WHERE sale_product_id = sp.id), 0)) / sp.selling_price) * 100)::numeric, 2)
+                ELSE 0 
+            END
+        WHERE id IN (
+            SELECT DISTINCT sale_product_id 
+            FROM public.sale_product_recipes 
+            WHERE component_type = 'INSUMO' AND component_id::text = NEW.id::text
+        );
+
+        -- D. Actualizar componentes de Combos
+        UPDATE public.combo_section_items
+        SET 
+            component_name = NEW.name,
+            unit = NEW.storage_unit,
+            unit_cost = NEW.current_price
+        WHERE component_type = 'INSUMO' AND component_id::text = NEW.id::text;
+
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger sobre items
+DROP TRIGGER IF EXISTS trg_sync_item_changes ON public.items;
+CREATE TRIGGER trg_sync_item_changes
+AFTER UPDATE ON public.items
+FOR EACH ROW
+EXECUTE FUNCTION public.fn_sync_item_changes_to_recipes();
+
+
+-- 2. Propagación de cambios en PRODUCCIONES (production_products) a recetas de venta y combos
+CREATE OR REPLACE FUNCTION public.fn_sync_production_changes_to_recipes()
+RETURNS TRIGGER AS $$
+BEGIN
+    -- Solo actuar si cambió el nombre, costo o unidad de la producción
+    IF (OLD.name IS DISTINCT FROM NEW.name) OR (OLD.cost_price IS DISTINCT FROM NEW.cost_price) OR (OLD.unit IS DISTINCT FROM NEW.unit) THEN
+
+        -- A. Actualizar recetas de Productos de Venta donde interviene esta producción
+        UPDATE public.sale_product_recipes
+        SET 
+            component_name = NEW.name,
+            unit = NEW.unit,
+            unit_cost = NEW.cost_price,
+            subtotal = ROUND((quantity * NEW.cost_price)::numeric, 2)
+        WHERE component_type = 'PRODUCCION' AND component_id::text = NEW.id::text;
+
+        -- Recalcular costo total y margen de ganancia de los productos de venta afectados
+        UPDATE public.sale_products sp
+        SET 
+            cost_price = COALESCE((
+                SELECT SUM(subtotal) 
+                FROM public.sale_product_recipes 
+                WHERE sale_product_id = sp.id
+            ), 0),
+            profit_margin = CASE 
+                WHEN sp.selling_price > 0 THEN ROUND((((sp.selling_price - COALESCE((SELECT SUM(subtotal) FROM public.sale_product_recipes WHERE sale_product_id = sp.id), 0)) / sp.selling_price) * 100)::numeric, 2)
+                ELSE 0 
+            END
+        WHERE id IN (
+            SELECT DISTINCT sale_product_id 
+            FROM public.sale_product_recipes 
+            WHERE component_type = 'PRODUCCION' AND component_id::text = NEW.id::text
+        );
+
+        -- B. Actualizar componentes de Combos
+        UPDATE public.combo_section_items
+        SET 
+            component_name = NEW.name,
+            unit = NEW.unit,
+            unit_cost = NEW.cost_price
+        WHERE component_type = 'PRODUCCION' AND component_id::text = NEW.id::text;
+
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger sobre production_products
+DROP TRIGGER IF EXISTS trg_sync_production_changes ON public.production_products;
+CREATE TRIGGER trg_sync_production_changes
+AFTER UPDATE ON public.production_products
+FOR EACH ROW
+EXECUTE FUNCTION public.fn_sync_production_changes_to_recipes();
+
 
 

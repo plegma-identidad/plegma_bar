@@ -2642,6 +2642,77 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           }
           return [saved, ...prev];
         });
+
+        // ----------------------------------------------------
+        // ACTUALIZACIÓN EN CASCADA (Requerimiento 2):
+        // Propagar cambios de Producción a Productos de Venta (Carta) y Combos
+        // ----------------------------------------------------
+        setSaleProducts((prevSales) => {
+          return prevSales.map((sale) => {
+            let hasChanges = false;
+            const newRecipe = (sale.recipeComponents || sale.recipe || []).map((rc) => {
+              const isProd = String(rc.componentType || '').toUpperCase().includes('PROD');
+              if (isProd && rc.componentId === saved.id) {
+                hasChanges = true;
+                const newCost = Number(saved.costPrice ?? saved.unitCost ?? 0);
+                return {
+                  ...rc,
+                  componentName: saved.name,
+                  unit: saved.unit || rc.unit,
+                  unitCost: newCost,
+                  subtotal: Number((rc.quantity * newCost).toFixed(2)),
+                };
+              }
+              return rc;
+            });
+
+            if (hasChanges) {
+              const newCostPrice = Number(newRecipe.reduce((sum, r) => sum + r.subtotal, 0).toFixed(2));
+              const sell = Number(sale.sellingPrice) || 0;
+              const newProfitMargin = sell > 0 ? Number((((sell - newCostPrice) / sell) * 100).toFixed(2)) : 0;
+              const updatedSale: SaleProduct = {
+                ...sale,
+                costPrice: newCostPrice,
+                profitMargin: newProfitMargin,
+                recipe: newRecipe,
+                recipeComponents: newRecipe,
+              };
+              saleProductsService.save(updatedSale).catch((e) => console.warn('Error cascada venta por produccion:', e));
+              return updatedSale;
+            }
+            return sale;
+          });
+        });
+
+        setCombos((prevCombos) => {
+          return prevCombos.map((combo) => {
+            let hasChanges = false;
+            const newSections = (combo.sections || []).map((sec) => {
+              const newItems = (sec.items || []).map((it) => {
+                const isProd = String(it.componentType || '').toUpperCase().includes('PROD');
+                if (isProd && it.componentId === saved.id) {
+                  hasChanges = true;
+                  return {
+                    ...it,
+                    componentName: saved.name,
+                    unit: saved.unit || it.unit,
+                    unitCost: Number(saved.costPrice ?? saved.unitCost ?? 0),
+                  };
+                }
+                return it;
+              });
+              return { ...sec, items: newItems };
+            });
+
+            if (hasChanges) {
+              const updatedCombo = { ...combo, sections: newSections };
+              combosService.save(updatedCombo).catch((e) => console.warn('Error cascada combo por produccion:', e));
+              return updatedCombo;
+            }
+            return combo;
+          });
+        });
+
         showToast(`Producción "${saved.name}" guardada exitosamente.`, 'success');
         return { success: true, message: 'Producción guardada.', product: saved };
       }
@@ -3843,6 +3914,124 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
     }
+
+    // ----------------------------------------------------
+    // ACTUALIZACIÓN EN CASCADA (Requerimiento 2):
+    // Propagar cambios de nombre, unidad y precio a Producciones, Carta y Combos
+    // ----------------------------------------------------
+
+    // 1. En Producciones (Semielaborados)
+    setProductionProducts((prevProds) => {
+      return prevProds.map((prod) => {
+        let hasChanges = false;
+        const newRecipe = (prod.recipe || []).map((rc) => {
+          if (rc.itemId === savedItem.id) {
+            hasChanges = true;
+            const newCost = Number(savedItem.currentPrice) || 0;
+            return {
+              ...rc,
+              itemName: savedItem.name,
+              unit: savedItem.storageUnit || rc.unit,
+              unitCost: newCost,
+              subtotal: Number((rc.quantity * newCost).toFixed(2)),
+            };
+          }
+          return rc;
+        });
+
+        if (hasChanges) {
+          const newCostPrice = Number(newRecipe.reduce((sum, r) => sum + r.subtotal, 0).toFixed(2));
+          const updatedProd = {
+            ...prod,
+            costPrice: newCostPrice,
+            unitCost: newCostPrice,
+            recipe: newRecipe,
+          };
+          productionsService.save(updatedProd).catch((e) => console.warn('Error cascada produccion:', e));
+          return updatedProd;
+        }
+        return prod;
+      });
+    });
+
+    // 2. En Productos de Venta (Carta)
+    setSaleProducts((prevSales) => {
+      return prevSales.map((sale) => {
+        let hasChanges = false;
+        const newRecipe = (sale.recipeComponents || sale.recipe || []).map((rc) => {
+          const isIns = String(rc.componentType || '').toUpperCase().includes('INS');
+          if (isIns && rc.componentId === savedItem.id) {
+            hasChanges = true;
+            const newCost = Number(savedItem.currentPrice) || 0;
+            return {
+              ...rc,
+              componentName: savedItem.name,
+              unit: savedItem.storageUnit || rc.unit,
+              unitCost: newCost,
+              subtotal: Number((rc.quantity * newCost).toFixed(2)),
+            };
+          }
+          return rc;
+        });
+
+        let newCostPrice = sale.costPrice;
+        let newProfitMargin = sale.profitMargin;
+
+        if (hasChanges) {
+          newCostPrice = Number(newRecipe.reduce((sum, r) => sum + r.subtotal, 0).toFixed(2));
+          const sell = Number(sale.sellingPrice) || 0;
+          newProfitMargin = sell > 0 ? Number((((sell - newCostPrice) / sell) * 100).toFixed(2)) : 0;
+        } else if (sale.linkedItemId === savedItem.id) {
+          hasChanges = true;
+          newCostPrice = Number(savedItem.currentPrice) || 0;
+          const sell = Number(sale.sellingPrice) || 0;
+          newProfitMargin = sell > 0 ? Number((((sell - newCostPrice) / sell) * 100).toFixed(2)) : 0;
+        }
+
+        if (hasChanges) {
+          const updatedSale: SaleProduct = {
+            ...sale,
+            costPrice: newCostPrice,
+            profitMargin: newProfitMargin,
+            recipe: newRecipe,
+            recipeComponents: newRecipe,
+          };
+          saleProductsService.save(updatedSale).catch((e) => console.warn('Error cascada producto venta:', e));
+          return updatedSale;
+        }
+        return sale;
+      });
+    });
+
+    // 3. En Combos
+    setCombos((prevCombos) => {
+      return prevCombos.map((combo) => {
+        let hasChanges = false;
+        const newSections = (combo.sections || []).map((sec) => {
+          const newItems = (sec.items || []).map((it) => {
+            const isIns = String(it.componentType || '').toUpperCase().includes('INS');
+            if (isIns && it.componentId === savedItem.id) {
+              hasChanges = true;
+              return {
+                ...it,
+                componentName: savedItem.name,
+                unit: savedItem.storageUnit || it.unit,
+                unitCost: Number(savedItem.currentPrice) || 0,
+              };
+            }
+            return it;
+          });
+          return { ...sec, items: newItems };
+        });
+
+        if (hasChanges) {
+          const updatedCombo = { ...combo, sections: newSections };
+          combosService.save(updatedCombo).catch((e) => console.warn('Error cascada combo:', e));
+          return updatedCombo;
+        }
+        return combo;
+      });
+    });
 
     logAudit('Guardar Insumo', 'conteo', savedItem.id, savedItem.name);
   };

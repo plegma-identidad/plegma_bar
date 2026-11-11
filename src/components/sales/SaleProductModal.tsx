@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../../context/AppContext';
-import { SaleProduct, SaleProductType, RecipeComponent, RecipeComponentType } from '../../types';
+import { SaleProduct, SaleProductType, RecipeComponent, RecipeComponentType, Item, ProductionProduct } from '../../types';
+import { itemsService } from '../../services/itemsService';
 import { Button } from '../ui/Button';
 import { FormField, TextInput, SelectInput } from '../ui/Form';
 import {
@@ -106,6 +107,10 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
     items,
     productionProducts,
     addOrUpdateSaleProduct,
+    addOrUpdateItem,
+    addOrUpdateProductionProduct,
+    itemCategories,
+    productionCategories,
     saleCategories,
     saleSubcategories,
     setSaleCategories,
@@ -115,6 +120,16 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
 
   // Modal de configuración de Categorías / Subcategorías
   const [configModalType, setConfigModalType] = useState<'category' | 'subcategory' | null>(null);
+
+  // Estados para Modal de Creación Rápida de Insumo / Producción desde Receta (Requerimiento 1)
+  const [isQuickCreateOpen, setIsQuickCreateOpen] = useState(false);
+  const [quickComponentType, setQuickComponentType] = useState<RecipeComponentType>('INSUMO');
+  const [quickName, setQuickName] = useState('');
+  const [quickCategory, setQuickCategory] = useState('');
+  const [quickUnit, setQuickUnit] = useState('kg');
+  const [quickCost, setQuickCost] = useState('0');
+  const [quickError, setQuickError] = useState('');
+  const [quickLoading, setQuickLoading] = useState(false);
 
   // Estados de progreso de subida a Storage
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -508,6 +523,100 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
     setNewComponentId('');
     setNewQuantity('1');
     setFormError('');
+  };
+
+  // Apertura y guardado de creación rápida de Insumo / Producción
+  const handleOpenQuickCreate = (type?: RecipeComponentType) => {
+    const targetType = type || newComponentType;
+    setQuickComponentType(targetType);
+    setQuickName('');
+    setQuickCost('0');
+    setQuickError('');
+    if (targetType === 'INSUMO') {
+      setQuickCategory(itemCategories[0]?.name || 'Almacén');
+      setQuickUnit('kg');
+    } else {
+      setQuickCategory(productionCategories[0]?.name || 'Elaborados');
+      setQuickUnit('porción');
+    }
+    setIsQuickCreateOpen(true);
+  };
+
+  const handleSaveQuickComponent = async () => {
+    if (!quickName.trim()) {
+      setQuickError('El nombre es obligatorio.');
+      return;
+    }
+    const costVal = parseFloat(quickCost);
+    if (isNaN(costVal) || costVal < 0) {
+      setQuickError('El costo ingresado debe ser un número mayor o igual a 0.');
+      return;
+    }
+
+    setQuickLoading(true);
+    setQuickError('');
+
+    try {
+      if (quickComponentType === 'INSUMO') {
+        const newItem: Item = {
+          id: '',
+          code: `INS-${Date.now().toString().slice(-4)}`,
+          name: quickName.trim(),
+          description: 'Creado desde escandallo de receta',
+          category: quickCategory || itemCategories[0]?.name || 'General',
+          subcategory: 'General',
+          brand: '',
+          storageUnit: quickUnit || 'kg',
+          purchaseUnit: quickUnit || 'kg',
+          packQuantity: 1,
+          location: 'Depósito Central',
+          currentStock: 0,
+          minStock: 0,
+          maxStock: 0,
+          currentPrice: costVal,
+          active: true,
+        };
+
+        const saved = await itemsService.save(newItem);
+        if (saved) {
+          await addOrUpdateItem(saved);
+          setNewComponentType('INSUMO');
+          setNewComponentId(saved.id);
+          showToast(`Insumo "${saved.name}" creado y seleccionado en la receta.`, 'success');
+          setIsQuickCreateOpen(false);
+        } else {
+          setQuickError('Error al guardar el insumo en la base de datos.');
+        }
+      } else {
+        const newProd: Partial<ProductionProduct> = {
+          code: `PRD-${Date.now().toString().slice(-4)}`,
+          name: quickName.trim(),
+          category: quickCategory || productionCategories[0]?.name || 'Elaborados',
+          subcategory: 'General',
+          unit: quickUnit || 'porción',
+          costPrice: costVal,
+          unitCost: costVal,
+          warehouse: 'Freezer Producción',
+          description: 'Creado desde escandallo de receta',
+          active: true,
+          recipe: [],
+        };
+
+        const res = await addOrUpdateProductionProduct(newProd);
+        if (res.success && res.product) {
+          setNewComponentType('PRODUCCION');
+          setNewComponentId(res.product.id);
+          showToast(`Producción "${res.product.name}" creada y seleccionada en la receta.`, 'success');
+          setIsQuickCreateOpen(false);
+        } else {
+          setQuickError(res.message || 'Error al guardar la producción.');
+        }
+      }
+    } catch (err: any) {
+      setQuickError(err.message || 'Ocurrió un error inesperado al crear el elemento.');
+    } finally {
+      setQuickLoading(false);
+    }
   };
 
   // Manejadores para edición en línea de componentes de la receta
@@ -1001,9 +1110,20 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
                   </div>
 
                   <div className="sm:col-span-4">
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                      Seleccionar Componente
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[11px] font-bold text-slate-600">
+                        Seleccionar Componente
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenQuickCreate(newComponentType)}
+                        className="text-[10px] font-black text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md border border-indigo-200 transition cursor-pointer"
+                        title="Crear un insumo o producción que no esté en el maestro"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Crear {newComponentType === 'INSUMO' ? 'Insumo' : 'Producción'}
+                      </button>
+                    </div>
                     <SearchableSelect
                       options={availableComponentOptions.map((o) => ({
                         value: o.value,
@@ -1525,6 +1645,156 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
             }
           }}
         />
+      )}
+
+      {/* Sub-modal: Creación Rápida de Insumo o Producción desde la Receta (Requerimiento 1) */}
+      {isQuickCreateOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs animate-fade-in">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 flex flex-col space-y-0">
+            {/* Header */}
+            <div className="px-5 py-3.5 bg-slate-900 text-white flex items-center justify-between shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold">
+                  <Plus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-black">
+                    Nuevo {quickComponentType === 'INSUMO' ? 'Insumo' : 'Semielaborado'}
+                  </h4>
+                  <p className="text-[10px] text-slate-400">Alta directa para usar en la receta</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsQuickCreateOpen(false)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-5 space-y-4 text-xs">
+              {quickError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{quickError}</span>
+                </div>
+              )}
+
+              {/* Selector de Tipo */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Tipo de Elemento a Crear
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenQuickCreate('INSUMO')}
+                    className={`py-2 px-3 rounded-xl text-xs font-black border transition ${
+                      quickComponentType === 'INSUMO'
+                        ? 'bg-amber-500 text-slate-950 border-amber-600 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    Insumo (Inventario)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenQuickCreate('PRODUCCION')}
+                    className={`py-2 px-3 rounded-xl text-xs font-black border transition ${
+                      quickComponentType === 'PRODUCCION'
+                        ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    Producción (Semielaborado)
+                  </button>
+                </div>
+              </div>
+
+              {/* Nombre */}
+              <FormField label="Nombre" required>
+                <TextInput
+                  value={quickName}
+                  onChange={(e) => setQuickName(e.target.value)}
+                  placeholder={quickComponentType === 'INSUMO' ? 'Ej: Queso Tybo en Barra, Pan Brioche...' : 'Ej: Salsa Cuatro Quesos, Medallón Smash...'}
+                  autoFocus
+                />
+              </FormField>
+
+              {/* Categoría y Unidad */}
+              <div className="grid grid-cols-2 gap-3">
+                <FormField label="Categoría">
+                  <TextInput
+                    value={quickCategory}
+                    onChange={(e) => setQuickCategory(e.target.value)}
+                    placeholder="Ej: Lácteos, Carnes..."
+                  />
+                </FormField>
+
+                <FormField label="Unidad">
+                  <SelectInput
+                    value={quickUnit}
+                    onChange={(e) => setQuickUnit(e.target.value)}
+                    options={
+                      quickComponentType === 'INSUMO'
+                        ? [
+                            { value: 'kg', label: 'kg (Kilogramos)' },
+                            { value: 'g', label: 'g (Gramos)' },
+                            { value: 'lt', label: 'lt (Litros)' },
+                            { value: 'ml', label: 'ml (Mililitros)' },
+                            { value: 'un', label: 'un (Unidades)' },
+                          ]
+                        : [
+                            { value: 'porción', label: 'porción' },
+                            { value: 'kg', label: 'kg' },
+                            { value: 'lt', label: 'lt' },
+                            { value: 'u', label: 'u (Unidad)' },
+                          ]
+                    }
+                  />
+                </FormField>
+              </div>
+
+              {/* Costo Unitario */}
+              <FormField label={`Costo Unitario ($ por ${quickUnit})`} required>
+                <TextInput
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={quickCost}
+                  onChange={(e) => setQuickCost(e.target.value)}
+                  placeholder="Ej: 3500"
+                />
+              </FormField>
+            </div>
+
+            {/* Footer */}
+            <div className="px-5 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setIsQuickCreateOpen(false)}
+                disabled={quickLoading}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="sm"
+                onClick={handleSaveQuickComponent}
+                disabled={quickLoading || !quickName.trim()}
+                leftIcon={<Check className="w-4 h-4" />}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-black"
+              >
+                {quickLoading ? 'Guardando...' : 'Guardar y Usar en Receta'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
