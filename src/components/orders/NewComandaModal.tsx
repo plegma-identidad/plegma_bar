@@ -46,6 +46,18 @@ export const NewComandaModal: React.FC<NewComandaModalProps> = ({
   const selectedTable = activeTables.find((t) => t.id === tableId);
   const selectedClient = safeClients.find((c) => c.id === clientId) || safeClients[0];
 
+  const isDelivery = Boolean(
+    selectedSaleType?.name?.toLowerCase().includes('delivery') ||
+    selectedSaleType?.id === 'st-002'
+  );
+
+  // Auto-cargar dirección del cliente al seleccionar canal Delivery o cambiar de cliente
+  React.useEffect(() => {
+    if (isDelivery && selectedClient) {
+      setDeliveryAddress(selectedClient.address || '');
+    }
+  }, [clientId, isDelivery, selectedSaleTypeId]);
+
   const handleNextStep = () => {
     if (!selectedSaleType) return;
     setStep(2);
@@ -71,6 +83,12 @@ export const NewComandaModal: React.FC<NewComandaModalProps> = ({
       return;
     }
 
+    // Validation: Dirección obligatoria para Delivery
+    if (isDelivery && (!deliveryAddress || !deliveryAddress.trim())) {
+      setError('Para comandas de tipo Delivery, la dirección de entrega es obligatoria. Por favor ingrésela.');
+      return;
+    }
+
     onConfirmCreate({
       saleTypeId: selectedSaleType.id,
       saleTypeName: selectedSaleType.name,
@@ -78,7 +96,7 @@ export const NewComandaModal: React.FC<NewComandaModalProps> = ({
       clientName: selectedClient ? selectedClient.name : 'Consumidor Final',
       tableId: selectedSaleType.requiresTable ? selectedTable?.id : undefined,
       tableName: selectedSaleType.requiresTable ? (selectedTable ? `${selectedTable.number} (${selectedTable.siteName})` : 'Mesa 01') : undefined,
-      deliveryAddress: deliveryAddress.trim() || undefined,
+      deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
     });
   };
 
@@ -184,13 +202,17 @@ export const NewComandaModal: React.FC<NewComandaModalProps> = ({
                 />
               </FormField>
 
-              {selectedSaleType?.name.toLowerCase().includes('delivery') && (
-                <FormField label="Dirección y Datos de Entrega">
+              {isDelivery && (
+                <FormField label="Dirección y Datos de Entrega (Obligatorio)" required>
                   <TextInput
                     value={deliveryAddress}
                     onChange={(e) => setDeliveryAddress(e.target.value)}
                     placeholder="Ej: Av. San Martín 450, Piso 2 B..."
+                    required
                   />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    * Se precarga la dirección habitual del cliente. Puede editarla para este pedido puntual sin alterar su ficha general.
+                  </p>
                 </FormField>
               )}
             </div>

@@ -985,6 +985,7 @@ export interface SaleOrder {
   createdByUserId: string;       // [AUTO]
   createdByUserName: string;
   generalNotes?: string;
+  deliveryAddress?: string; // Dirección de entrega específica (Delivery)
   
   // Trazabilidad temporal (T1 - T4)
   t1CreatedAt: string;           // T1: Inicio

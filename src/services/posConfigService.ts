@@ -365,4 +365,150 @@ export const posConfigService = {
       return false;
     }
   },
+
+  // ----------------------------------------------------
+  // 4. GRUPOS DE OPCIONES Y EXTRAS (product_option_groups)
+  // ----------------------------------------------------
+  async getOptionGroups(): Promise<any[]> {
+    try {
+      const { data: groups, error: grpError } = await supabase
+        .from('product_option_groups')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (grpError) {
+        console.warn('Nota: product_option_groups aún no tiene registros o no está disponible:', grpError.message);
+        return [];
+      }
+
+      const { data: options, error: optError } = await supabase
+        .from('product_options')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (optError) {
+        console.warn('Nota: product_options no disponible:', optError.message);
+      }
+
+      const optionsByGroup = new Map<string, any[]>();
+      (options || []).forEach((opt) => {
+        const list = optionsByGroup.get(opt.group_id) || [];
+        list.push({
+          id: opt.id,
+          name: opt.name,
+          priceModifier: Number(opt.price_modifier) || 0,
+        });
+        optionsByGroup.set(opt.group_id, list);
+      });
+
+      return (groups || []).map((g) => ({
+        id: g.id,
+        name: g.name,
+        isRequired: g.is_required ?? false,
+        selectionType: g.selection_type || 'single',
+        active: g.active ?? true,
+        options: optionsByGroup.get(g.id) || [],
+      }));
+    } catch (err) {
+      console.warn('Exception al obtener grupos de opciones desde Supabase:', err);
+      return [];
+    }
+  },
+
+  async saveOptionGroup(group: any): Promise<any> {
+    try {
+      const isUuid = group.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(group.id);
+      const payload: Record<string, any> = {
+        name: group.name,
+        is_required: Boolean(group.isRequired),
+        selection_type: group.selectionType || 'single',
+        active: group.active ?? true,
+      };
+
+      if (isUuid) {
+        const { data, error } = await supabase
+          .from('product_option_groups')
+          .update(payload)
+          .eq('id', group.id)
+          .select('*')
+          .single();
+        if (error) console.warn('Error al actualizar option group en Supabase:', error.message);
+        return data || group;
+      } else {
+        const { data, error } = await supabase
+          .from('product_option_groups')
+          .insert(payload)
+          .select('*')
+          .single();
+        if (error) console.warn('Error al insertar option group en Supabase:', error.message);
+        return data || group;
+      }
+    } catch (err) {
+      console.warn('Exception al guardar option group:', err);
+      return group;
+    }
+  },
+
+  async deleteOptionGroup(groupId: string): Promise<boolean> {
+    try {
+      const isUuid = groupId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(groupId);
+      if (!isUuid) return true;
+      const { error } = await supabase.from('product_option_groups').delete().eq('id', groupId);
+      if (error) console.warn('Error al eliminar grupo en Supabase:', error.message);
+      return true;
+    } catch (err) {
+      console.warn('Exception al eliminar grupo en Supabase:', err);
+      return false;
+    }
+  },
+
+  async saveOption(groupId: string, option: any): Promise<any> {
+    try {
+      const isGroupUuid = groupId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(groupId);
+      if (!isGroupUuid) return option;
+      const isOptUuid = option.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(option.id);
+
+      const payload: Record<string, any> = {
+        group_id: groupId,
+        name: option.name,
+        price_modifier: Number(option.priceModifier) || 0,
+        active: true,
+      };
+
+      if (isOptUuid) {
+        const { data, error } = await supabase
+          .from('product_options')
+          .update(payload)
+          .eq('id', option.id)
+          .select('*')
+          .single();
+        if (error) console.warn('Error al actualizar opcion en Supabase:', error.message);
+        return data || option;
+      } else {
+        const { data, error } = await supabase
+          .from('product_options')
+          .insert(payload)
+          .select('*')
+          .single();
+        if (error) console.warn('Error al insertar opcion en Supabase:', error.message);
+        return data || option;
+      }
+    } catch (err) {
+      console.warn('Exception al guardar opcion en Supabase:', err);
+      return option;
+    }
+  },
+
+  async deleteOption(optionId: string): Promise<boolean> {
+    try {
+      const isOptUuid = optionId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(optionId);
+      if (!isOptUuid) return true;
+      const { error } = await supabase.from('product_options').delete().eq('id', optionId);
+      if (error) console.warn('Error al eliminar opcion en Supabase:', error.message);
+      return true;
+    } catch (err) {
+      console.warn('Exception al eliminar opcion en Supabase:', err);
+      return false;
+    }
+  },
 };

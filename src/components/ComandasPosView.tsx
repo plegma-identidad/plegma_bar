@@ -21,6 +21,9 @@ import {
   Truck,
   Check,
   MessageSquare,
+  Save,
+  Receipt,
+  MapPin,
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { TextInput } from './ui/Form';
@@ -34,6 +37,7 @@ import { ComandaModal } from './orders/ComandaModal';
 import { NewComandaModal } from './orders/NewComandaModal';
 import { OrderItemCommentModal } from './orders/OrderItemCommentModal';
 import { ComboComandaModal, DEMO_COMBO_MERIENDA_CLASICO } from './orders/ComboComandaModal';
+import { SaleTicketModal } from './orders/SaleTicketModal';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
@@ -97,17 +101,23 @@ export function ComandasPosView() {
   const [selectedComboForComanda, setSelectedComboForComanda] = useState<Combo | null>(null);
   const [billingOrder, setBillingOrder] = useState<SaleOrder | null>(null);
   const [comandaOrderPreview, setComandaOrderPreview] = useState<SaleOrder | null>(null);
+  const [ticketOrderPreview, setTicketOrderPreview] = useState<SaleOrder | null>(null);
   const [editingCommentItem, setEditingCommentItem] = useState<SaleOrderItem | null>(null);
+  const [isOrderSaved, setIsOrderSaved] = useState<boolean>(true);
+
+  // Paginación en Carta / Combos
+  const [catalogPage, setCatalogPage] = useState<number>(1);
+  const CATALOG_PAGE_SIZE = 12;
 
   // Save comment on specific line item
   const handleSaveItemComment = (itemId: string, comment?: string) => {
     if (!activeOrder) return;
     const updatedItems = activeOrder.items.map((i) => (i.id === itemId ? { ...i, lineComment: comment } : i));
     const updatedOrder = { ...activeOrder, items: updatedItems };
-    updateSaleOrder(updatedOrder);
     setActiveOrder(updatedOrder);
+    setIsOrderSaved(false);
     setEditingCommentItem(null);
-    showToast('Comentario de ítem actualizado', 'success');
+    showToast('Comentario de ítem modificado. Presione "Guardar" para confirmar.', 'info');
   };
 
   // Filters for Bandeja
@@ -179,8 +189,8 @@ export function ComandasPosView() {
   const filteredBandejaOrders = useMemo(() => {
     return saleOrders.filter((o) => {
       if (o.status === 'Facturado' || o.status === 'Cancelado') return false;
-      if (bandejaFilter === 'Salón' && !o.saleTypeName.toLowerCase().includes('salón')) return false;
-      if (bandejaFilter === 'Take Away' && !o.saleTypeName.toLowerCase().includes('take')) return false;
+      if (bandejaFilter === 'Salón' && !o.saleTypeName.toLowerCase().includes('salón') && !o.saleTypeName.toLowerCase().includes('salon')) return false;
+      if (bandejaFilter === 'Take Away' && !o.saleTypeName.toLowerCase().includes('take') && !o.saleTypeName.toLowerCase().includes('retiro')) return false;
       if (bandejaFilter === 'Delivery' && !o.saleTypeName.toLowerCase().includes('delivery')) return false;
       if (bandejaFilter === 'Demoradas' && getElapsedMinutes(o.createdAt) <= 20) return false;
       if (searchQuery.trim()) {
@@ -188,7 +198,8 @@ export function ComandasPosView() {
         const matchesNum = String(o.orderNumber).includes(q);
         const matchesClient = o.clientName.toLowerCase().includes(q);
         const matchesTable = (o.tableName || '').toLowerCase().includes(q);
-        if (!matchesNum && !matchesClient && !matchesTable) return false;
+        const matchesAddress = (o.deliveryAddress || '').toLowerCase().includes(q);
+        if (!matchesNum && !matchesClient && !matchesTable && !matchesAddress) return false;
       }
       return true;
     });
@@ -206,9 +217,32 @@ export function ComandasPosView() {
     });
   }, [combinedCatalog, categoryFilter, searchQuery]);
 
+  // Reseteo automático de página al cambiar filtro de categoría o búsqueda
+  React.useEffect(() => {
+    setCatalogPage(1);
+  }, [categoryFilter, searchQuery]);
+
+  const totalCatalogPages = Math.ceil(filteredCatalog.length / CATALOG_PAGE_SIZE) || 1;
+  const paginatedCatalog = useMemo(() => {
+    const start = (catalogPage - 1) * CATALOG_PAGE_SIZE;
+    return filteredCatalog.slice(start, start + CATALOG_PAGE_SIZE);
+  }, [filteredCatalog, catalogPage]);
+
   // Handle Card Click (Click en tarjeta = Consulta preview)
   const handleOrderCardClick = (order: SaleOrder) => {
     setComandaOrderPreview(order);
+  };
+
+  // Guardar comanda activa explícitamente (Requerimiento 2)
+  const handleSaveActiveOrder = async () => {
+    if (!activeOrder) return;
+    const res = await updateSaleOrder(activeOrder);
+    if (res.success) {
+      setIsOrderSaved(true);
+      showToast(`Comanda #${String(activeOrder.orderNumber).padStart(4, '0')} guardada correctamente.`, 'success');
+    } else {
+      showToast(res.message, 'danger');
+    }
   };
 
   // Start New Comanda (Guided 2-step modal trigger)
@@ -228,7 +262,8 @@ export function ComandasPosView() {
       clientName: payload.clientName,
       tableId: payload.tableId,
       tableName: payload.tableName,
-      generalNotes: payload.deliveryAddress ? `Delivery: ${payload.deliveryAddress}` : undefined,
+      deliveryAddress: payload.deliveryAddress,
+      generalNotes: payload.deliveryAddress ? `Entrega en: ${payload.deliveryAddress}` : undefined,
       totalAmount: 0,
       items: [],
     };
@@ -237,6 +272,7 @@ export function ComandasPosView() {
     if (res.success && res.order) {
       setIsNewComandaModalOpen(false);
       setActiveOrder(res.order);
+      setIsOrderSaved(false); // Requiere agregar items y presionar Guardar para habilitar Imprimir
       setViewMode('edicion');
       showToast(res.message, 'success');
     } else {
@@ -290,8 +326,8 @@ export function ComandasPosView() {
         totalAmount: updatedTotal,
       };
 
-      await updateSaleOrder(updatedOrder);
       setActiveOrder(updatedOrder);
+      setIsOrderSaved(false);
     }
   };
 
@@ -307,10 +343,10 @@ export function ComandasPosView() {
       totalAmount: updatedTotal,
     };
 
-    await updateSaleOrder(updatedOrder);
     setActiveOrder(updatedOrder);
+    setIsOrderSaved(false);
     setSelectedCatalogItem(null);
-    showToast(`Ítem "${newItem.productName}" agregado`, 'success');
+    showToast(`Ítem "${newItem.productName}" agregado a la comanda`, 'info');
   };
 
   // Confirm item from ComboComandaModal (Imagen 8)
@@ -325,10 +361,10 @@ export function ComandasPosView() {
       totalAmount: updatedTotal,
     };
 
-    await updateSaleOrder(updatedOrder);
     setActiveOrder(updatedOrder);
+    setIsOrderSaved(false);
     setSelectedComboForComanda(null);
-    showToast(`Combo "${newItem.productName}" agregado a la comanda`, 'success');
+    showToast(`Combo "${newItem.productName}" agregado a la comanda`, 'info');
   };
 
   // Update item quantity in active order
@@ -349,8 +385,8 @@ export function ComandasPosView() {
     const updatedTotal = updatedItems.reduce((acc, i) => acc + i.subtotal, 0);
     const updatedOrder = { ...activeOrder, items: updatedItems, totalAmount: updatedTotal };
 
-    await updateSaleOrder(updatedOrder);
     setActiveOrder(updatedOrder);
+    setIsOrderSaved(false);
   };
 
   // Remove line item
@@ -360,8 +396,8 @@ export function ComandasPosView() {
     const updatedTotal = updatedItems.reduce((acc, i) => acc + i.subtotal, 0);
     const updatedOrder = { ...activeOrder, items: updatedItems, totalAmount: updatedTotal };
 
-    await updateSaleOrder(updatedOrder);
     setActiveOrder(updatedOrder);
+    setIsOrderSaved(false);
   };
 
   // Print / Send Comanda to Kitchen
@@ -514,6 +550,12 @@ export function ComandasPosView() {
                       <User className="w-4 h-4 text-slate-400 shrink-0" />
                       <span className="truncate">{order.tableName || order.clientName}</span>
                     </div>
+                    {order.deliveryAddress && (
+                      <div className="flex items-center space-x-1.5 text-xs text-indigo-700 font-bold bg-indigo-50 px-2.5 py-1 rounded-xl border border-indigo-100">
+                        <Truck className="w-3.5 h-3.5 shrink-0 text-indigo-600" />
+                        <span className="truncate" title={order.deliveryAddress}>{order.deliveryAddress}</span>
+                      </div>
+                    )}
                     <p className="text-xs text-slate-500 font-bold">
                       📦 {order.items.length} {order.items.length === 1 ? 'ítem cargado' : 'ítems cargados'}
                     </p>
@@ -614,7 +656,7 @@ export function ComandasPosView() {
                   if (!activeOrder) return;
                   const updatedOrder = { ...activeOrder, generalNotes: e.target.value };
                   setActiveOrder(updatedOrder);
-                  updateSaleOrder(updatedOrder);
+                  setIsOrderSaved(false);
                 }}
                 placeholder="Ej: Mesas pegadas, sin cubiertos, marchado urgente..."
                 className="bg-white border-amber-200 text-xs text-slate-800 focus:ring-amber-500"
@@ -711,7 +753,19 @@ export function ComandasPosView() {
             {/* Total and Action Buttons Footer */}
             <div className="p-4 border-t border-slate-200 bg-slate-900 text-white space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs uppercase font-extrabold text-slate-400">Total Comanda</span>
+                <div>
+                  <span className="text-xs uppercase font-extrabold text-slate-400 block">Total Comanda</span>
+                  {!isOrderSaved && (
+                    <span className="text-[10px] text-amber-400 font-extrabold flex items-center gap-1 animate-pulse">
+                      ● Cambios pendientes de guardar
+                    </span>
+                  )}
+                  {isOrderSaved && (
+                    <span className="text-[10px] text-emerald-400 font-extrabold flex items-center gap-1">
+                      ✓ Comanda confirmada y guardada
+                    </span>
+                  )}
+                </div>
                 <span className="text-2xl font-black text-amber-400">{fmt(activeOrder?.totalAmount || 0)}</span>
               </div>
 
@@ -726,16 +780,50 @@ export function ComandasPosView() {
                   Cobrar
                 </Button>
 
+                {/* Botón Guardar Comanda: Requerido antes de habilitar la impresión */}
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => activeOrder && handlePrintComanda(activeOrder)}
-                  disabled={!activeOrder || activeOrder.items.length === 0}
-                  leftIcon={<Printer className="w-4 h-4" />}
+                  onClick={handleSaveActiveOrder}
+                  disabled={!activeOrder}
+                  leftIcon={<Save className="w-4 h-4" />}
+                  className={`${
+                    !isOrderSaved
+                      ? 'bg-amber-500 hover:bg-amber-600 text-slate-950 font-black shadow-md ring-2 ring-amber-400 animate-pulse'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white font-bold'
+                  }`}
                 >
-                  Imprimir
+                  {!isOrderSaved ? 'Guardar' : 'Guardado ✓'}
                 </Button>
               </div>
+
+              {/* Botón Imprimir Comanda y Ticket Cliente: SOLO APARECEN CUANDO ESTÁ GUARDADA COMO MÉTODO DE CONFIRMACIÓN */}
+              {isOrderSaved && activeOrder && (
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800 animate-fade-in">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handlePrintComanda(activeOrder)}
+                    disabled={activeOrder.items.length === 0}
+                    leftIcon={<Printer className="w-3.5 h-3.5" />}
+                    className="text-xs bg-amber-500 hover:bg-amber-600 text-slate-950 font-black py-2 transition-all shadow-md flex items-center justify-center"
+                    title="Imprimir comanda para cocina/barra"
+                  >
+                    Imprimir Comanda
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setTicketOrderPreview(activeOrder)}
+                    disabled={activeOrder.items.length === 0}
+                    leftIcon={<Receipt className="w-3.5 h-3.5" />}
+                    className="text-xs text-slate-200 hover:text-white border-slate-700 hover:bg-slate-800 py-2 flex items-center justify-center"
+                    title="Imprimir ticket de venta para el cliente"
+                  >
+                    Ticket Cliente
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -770,9 +858,9 @@ export function ComandasPosView() {
               />
             </div>
 
-            {/* Product Cards Grid */}
+            {/* Product Cards Grid con Paginación */}
             <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {filteredCatalog.map((prod) => (
+              {paginatedCatalog.map((prod) => (
                 <div
                   key={prod.id}
                   onClick={() => handleSelectProductFromCatalog(prod)}
@@ -812,6 +900,37 @@ export function ComandasPosView() {
                 </div>
               ))}
             </div>
+
+            {/* Paginación Táctil (Requerimiento 6) */}
+            {totalCatalogPages > 1 && (
+              <div className="p-3 bg-white border-t border-slate-200 flex items-center justify-between shrink-0 shadow-xs">
+                <span className="text-xs font-bold text-slate-500">
+                  Mostrando {(catalogPage - 1) * CATALOG_PAGE_SIZE + 1} - {Math.min(catalogPage * CATALOG_PAGE_SIZE, filteredCatalog.length)} de {filteredCatalog.length} artículos
+                </span>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={catalogPage === 1}
+                    onClick={() => setCatalogPage((p) => Math.max(1, p - 1))}
+                    leftIcon={<ChevronLeft className="w-4 h-4" />}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="text-xs font-black px-2.5 py-1 bg-amber-50 rounded-xl text-amber-900 border border-amber-200">
+                    Página {catalogPage} de {totalCatalogPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={catalogPage >= totalCatalogPages}
+                    onClick={() => setCatalogPage((p) => Math.min(totalCatalogPages, p + 1))}
+                  >
+                    Siguiente →
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -876,6 +995,14 @@ export function ComandasPosView() {
           item={editingCommentItem}
           onClose={() => setEditingCommentItem(null)}
           onSaveComment={handleSaveItemComment}
+        />
+      )}
+
+      {/* Modal 7: Ticket de Venta / Pre-cuenta para Cliente (Requerimiento 2) */}
+      {ticketOrderPreview && (
+        <SaleTicketModal
+          order={ticketOrderPreview}
+          onClose={() => setTicketOrderPreview(null)}
         />
       )}
     </div>

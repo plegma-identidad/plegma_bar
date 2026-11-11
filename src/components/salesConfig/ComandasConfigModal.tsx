@@ -31,6 +31,12 @@ export const ComandasConfigModal: React.FC<ComandasConfigModalProps> = ({ onClos
   const [newOptionName, setNewOptionName] = useState('');
   const [newOptionPrice, setNewOptionPrice] = useState('0');
 
+  // Paginación de grupos de opciones y extras
+  const [groupsPage, setGroupsPage] = useState<number>(1);
+  const GROUPS_PAGE_SIZE = 3;
+  const totalGroupsPages = Math.ceil(productOptionGroups.length / GROUPS_PAGE_SIZE) || 1;
+  const paginatedGroups = productOptionGroups.slice((groupsPage - 1) * GROUPS_PAGE_SIZE, groupsPage * GROUPS_PAGE_SIZE);
+
   const handleAddGroup = () => {
     if (!newGroupName.trim()) return;
     const newGrp: ProductOptionGroup = {
@@ -207,12 +213,36 @@ export const ComandasConfigModal: React.FC<ComandasConfigModalProps> = ({ onClos
                 </div>
               </div>
 
-              {/* List of Option Groups */}
+              {/* List of Option Groups con Paginación */}
               <div className="space-y-4">
-                <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">
-                  Grupos Configurados ({productOptionGroups.length})
-                </h3>
-                {productOptionGroups.map((group) => (
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">
+                    Grupos Configurados ({productOptionGroups.length})
+                  </h3>
+                  {totalGroupsPages > 1 && (
+                    <div className="flex items-center space-x-2 text-xs font-bold text-slate-600">
+                      <button
+                        type="button"
+                        disabled={groupsPage === 1}
+                        onClick={() => setGroupsPage((p) => Math.max(1, p - 1))}
+                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 rounded-lg transition"
+                      >
+                        ← Ant
+                      </button>
+                      <span>Pág. {groupsPage} de {totalGroupsPages}</span>
+                      <button
+                        type="button"
+                        disabled={groupsPage >= totalGroupsPages}
+                        onClick={() => setGroupsPage((p) => Math.min(totalGroupsPages, p + 1))}
+                        className="px-2 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 rounded-lg transition"
+                      >
+                        Sig →
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {paginatedGroups.map((group) => (
                   <div key={group.id} className="border border-slate-200 rounded-2xl p-4 bg-white shadow-xs space-y-3">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-2">
