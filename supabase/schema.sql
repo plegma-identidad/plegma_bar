@@ -1088,6 +1088,22 @@ ALTER TABLE IF EXISTS public.sale_orders ADD COLUMN IF NOT EXISTS updated_at TIM
 ALTER TABLE IF EXISTS public.production_products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 ALTER TABLE IF EXISTS public.sale_products ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 ALTER TABLE IF EXISTS public.product_options ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
+ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS commercial_name TEXT;
+ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS rubro TEXT;
+ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS subrubro TEXT;
+ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS whatsapp TEXT;
+ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS cuit TEXT;
+ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
+
+CREATE INDEX IF NOT EXISTS idx_providers_name ON public.providers(name);
+CREATE INDEX IF NOT EXISTS idx_providers_active ON public.providers(active);
+CREATE INDEX IF NOT EXISTS idx_providers_rubro ON public.providers(rubro);
+
+ALTER TABLE public.providers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Permitir acceso publico providers" ON public.providers;
+CREATE POLICY "Permitir acceso publico providers"
+    ON public.providers FOR ALL USING (true) WITH CHECK (true);
 
 
 -- ====================================================================

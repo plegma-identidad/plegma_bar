@@ -372,7 +372,7 @@ interface AppContextType {
 
   // Items & Providers CRUD
   updateReceptionHours: (config: ReceptionHoursConfig) => void;
-  addOrUpdateProvider: (provider: Provider) => void;
+  addOrUpdateProvider: (provider: Provider) => Promise<Provider | null>;
   addOrUpdateItem: (item: Item, providerRelations?: Partial<ProviderItemRelation>[]) => void;
 
   // Reset
@@ -3846,7 +3846,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     logAudit('Actualizar Horarios de Recepción', 'proveedor', 'config-global');
   };
 
-  const addOrUpdateProvider = async (provider: Provider) => {
+  const addOrUpdateProvider = async (provider: Provider): Promise<Provider | null> => {
     const saved = await providersService.save(provider);
     if (saved) {
       setProviders((prev) => {
@@ -3859,7 +3859,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         return [saved, ...prev];
       });
       logAudit('Guardar Proveedor', 'proveedor', saved.id, saved.name);
+      return saved;
     }
+    return null;
   };
 
   const addOrUpdateItem = async (item: Item, providerRelations?: Partial<ProviderItemRelation>[]) => {

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { Item, Provider } from '../types';
 import { ModuleHelpModal } from './ui/ModuleHelpModal';
-import { SelectWithInlineAdd, SelectInput } from './ui/Form';
+import { SelectInput } from './ui/Form';
 import { ConfigManagerModal } from './ui/ConfigManagerModal';
 import { ConfirmModal } from './ui/ConfirmModal';
 import {
@@ -23,7 +23,7 @@ import {
 
 export const ItemMasterView: React.FC = () => {
   const { 
-    items, providers, providerItems, addOrUpdateItem, deleteItem, userRole,
+    items, providers, providerItems, addOrUpdateItem, addOrUpdateProvider, deleteItem, userRole,
     itemCategories, setItemCategories,
     itemSubcategories, setItemSubcategories,
     itemUnits, setItemUnits,
@@ -55,6 +55,43 @@ export const ItemMasterView: React.FC = () => {
   
   const [configModalType, setConfigModalType] = useState<'category' | 'subcategory' | 'unit' | null>(null);
   const [successModalInfo, setSuccessModalInfo] = useState<{ title: string; message: string } | null>(null);
+
+  // Modal rápido para crear nuevo proveedor desde el insumo
+  const [isNewProviderModalOpen, setIsNewProviderModalOpen] = useState(false);
+  const [newProvName, setNewProvName] = useState('');
+  const [newProvCommercialName, setNewProvCommercialName] = useState('');
+  const [newProvRubro, setNewProvRubro] = useState('Almacén');
+  const [newProvPhone, setNewProvPhone] = useState('');
+  const [newProvWhatsapp, setNewProvWhatsapp] = useState('');
+  const [newProvCuit, setNewProvCuit] = useState('');
+  const [isSavingProvider, setIsSavingProvider] = useState(false);
+
+
+  const handleSaveDetailedProvider = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProvName.trim()) return;
+    setIsSavingProvider(true);
+    try {
+      const newProv: Provider = {
+        id: 'prov-' + Date.now(),
+        code: 'PRV-' + Math.floor(100 + Math.random() * 900),
+        name: newProvName.trim(),
+        commercialName: newProvCommercialName.trim() || newProvName.trim(),
+        rubro: newProvRubro || formCategory || 'Almacén',
+        phone: newProvPhone.trim() || undefined,
+        whatsapp: newProvWhatsapp.trim() || undefined,
+        cuit: newProvCuit.trim() || undefined,
+        active: true,
+      };
+      const saved = await addOrUpdateProvider(newProv);
+      if (saved) {
+        setFormProviderId(saved.id);
+      }
+      setIsNewProviderModalOpen(false);
+    } finally {
+      setIsSavingProvider(false);
+    }
+  };
 
   const handleOpenNewItemModal = () => {
     setEditingItem(null);
@@ -548,13 +585,43 @@ export const ItemMasterView: React.FC = () => {
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Proveedor Principal:</label>
-                <SelectWithInlineAdd
+                <label className="font-bold text-slate-700 block mb-1">Ubicación / Depósito:</label>
+                <input
+                  type="text"
+                  value={formLocation}
+                  onChange={(e) => setFormLocation(e.target.value)}
+                  placeholder="Ej.: Depósito Seco"
+                  className="w-full p-2 bg-slate-50 border border-slate-300 rounded-xl"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="font-bold text-slate-700">Proveedor Principal:</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewProvName('');
+                      setNewProvCommercialName('');
+                      setNewProvRubro(formCategory || 'Almacén');
+                      setNewProvPhone('');
+                      setNewProvWhatsapp('');
+                      setNewProvCuit('');
+                      setIsNewProviderModalOpen(true);
+                    }}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200 hover:border-orange-300 rounded-lg text-[11px] font-bold transition shadow-2xs"
+                    title="Crear nuevo proveedor"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Nuevo Proveedor</span>
+                  </button>
+                </div>
+                <SelectInput
                   options={providers.map((p) => ({ value: p.id, label: p.name }))}
                   value={formProviderId}
                   onChange={(e) => setFormProviderId(e.target.value)}
                   placeholder="Seleccionar Proveedor..."
-                  requiredPermission="canInlineCreate"
+                  className="w-full"
                 />
               </div>
             </div>
@@ -572,6 +639,126 @@ export const ItemMasterView: React.FC = () => {
                 className="px-5 py-2 bg-orange-600 text-white font-extrabold text-xs rounded-xl hover:bg-orange-700"
               >
                 {editingItem ? 'Guardar Cambios' : 'Guardar Insumo'}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* SUBMODAL RÁPIDO PARA CREAR PROVEEDOR EN CALIENTE */}
+      {isNewProviderModalOpen && (
+        <div className="fixed inset-0 z-60 bg-slate-950/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <form
+            onSubmit={handleSaveDetailedProvider}
+            className="bg-white rounded-3xl p-6 shadow-2xl w-full max-w-md space-y-4 border border-slate-200 animate-fadeIn"
+          >
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                <Building2 className="w-5 h-5 text-orange-600" />
+                <span>Crear Nuevo Proveedor</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsNewProviderModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Al guardar, el proveedor se registrará en el sistema y quedará automáticamente seleccionado para este insumo.
+            </p>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">
+                  Nombre / Razón Social <span className="text-red-500">*</span>:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newProvName}
+                  onChange={(e) => setNewProvName(e.target.value)}
+                  placeholder="Ej.: Distribuidora Mayorista Sur"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Nombre Comercial (opcional):</label>
+                <input
+                  type="text"
+                  value={newProvCommercialName}
+                  onChange={(e) => setNewProvCommercialName(e.target.value)}
+                  placeholder="Ej.: Mayorista Sur"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Rubro:</label>
+                  <input
+                    type="text"
+                    value={newProvRubro}
+                    onChange={(e) => setNewProvRubro(e.target.value)}
+                    placeholder="Ej.: Almacén, Carnes..."
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">CUIT (opcional):</label>
+                  <input
+                    type="text"
+                    value={newProvCuit}
+                    onChange={(e) => setNewProvCuit(e.target.value)}
+                    placeholder="30-XXXXXXXX-X"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Teléfono:</label>
+                  <input
+                    type="text"
+                    value={newProvPhone}
+                    onChange={(e) => setNewProvPhone(e.target.value)}
+                    placeholder="Ej.: 11 4000-0000"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">WhatsApp:</label>
+                  <input
+                    type="text"
+                    value={newProvWhatsapp}
+                    onChange={(e) => setNewProvWhatsapp(e.target.value)}
+                    placeholder="Ej.: 5491140000000"
+                    className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setIsNewProviderModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl"
+              >
+                Volver al Insumo
+              </button>
+              <button
+                type="submit"
+                disabled={isSavingProvider || !newProvName.trim()}
+                className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs rounded-xl shadow disabled:opacity-50 flex items-center gap-1.5"
+              >
+                <Building2 className="w-4 h-4" />
+                <span>{isSavingProvider ? 'Guardando...' : 'Guardar y Seleccionar'}</span>
               </button>
             </div>
           </form>
