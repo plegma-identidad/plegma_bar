@@ -26,6 +26,7 @@ import {
   Utensils,
   Calendar,
   ChefHat,
+  DollarSign,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -79,9 +80,10 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     id: 'compras_comprobantes',
-    label: 'Compras y Comprobantes',
+    label: 'Compras y Gastos',
     icon: ShoppingBag,
     items: [
+      { id: 'gastos', label: 'Bandeja de Gastos', description: 'Consolidación de egresos, recurrentes & comprobantes', icon: DollarSign },
       { id: 'inbox', label: 'Bandeja de Pedidos y Pagos', description: 'Órdenes, recepciones, comprobantes & pagos', icon: FileText },
     ],
   },

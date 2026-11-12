@@ -30,6 +30,7 @@ import { ComandasPosView } from './components/ComandasPosView';
 import { SaleProductsView } from './components/sales/SaleProductsView';
 import { CombosView } from './components/combos/CombosView';
 import { ProductionsView } from './components/productions/ProductionsView';
+import { ExpensesView } from './components/expenses/ExpensesView';
 import { useIsMobile } from './hooks/useIsMobile';
 import { Provider, Order, StockCount } from './types';
 
@@ -191,8 +192,11 @@ function MainLayout() {
             onRecordPayment={(ord) => {
               // Direct payment inside inbox
             }}
+            onNewOrder={(prov) => setOrderReviewProvider(prov)}
           />
         )}
+
+        {currentTab === 'gastos' && <ExpensesView />}
 
         {currentTab === 'items' && <ItemMasterView />}
 

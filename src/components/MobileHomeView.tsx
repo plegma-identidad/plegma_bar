@@ -21,6 +21,7 @@ import {
   ArrowRightLeft,
   ShoppingBag,
   TrendingUp,
+  DollarSign,
 } from 'lucide-react';
 
 interface MobileHomeViewProps {
@@ -123,7 +124,18 @@ export const MobileHomeView: React.FC<MobileHomeViewProps> = ({
       </div>
 
       {/* 3. Top Quick Action Grid Pills */}
-      <div className="grid grid-cols-4 gap-2 text-center">
+      <div className="grid grid-cols-5 gap-2 text-center">
+        <button
+          type="button"
+          onClick={() => onNavigateTab('gastos')}
+          className="bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex flex-col items-center gap-1.5 hover:border-amber-300 hover:shadow-md transition group"
+        >
+          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-110 transition">
+            <DollarSign className="w-5 h-5" />
+          </div>
+          <span className="text-[11px] font-extrabold text-slate-800">Gastos</span>
+        </button>
+
         <button
           type="button"
           onClick={() => onNavigateTab('maestros-cuentas')}

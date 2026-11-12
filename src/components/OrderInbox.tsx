@@ -14,24 +14,29 @@ import {
   Building2,
   Calendar,
   X,
+  Plus,
+  ShoppingBag,
 } from 'lucide-react';
 
 interface OrderInboxProps {
   onViewOrderDocument: (orderId: string) => void;
   onReceiveGoods: (provider: Provider, order: Order) => void;
   onRecordPayment: (order: Order) => void;
+  onNewOrder?: (provider: Provider) => void;
 }
 
 export const OrderInbox: React.FC<OrderInboxProps> = ({
   onViewOrderDocument,
   onReceiveGoods,
   onRecordPayment,
+  onNewOrder,
 }) => {
   const { orders, providers, recordPayment, userRole } = useApp();
 
   const [activeTab, setActiveTab] = useState<string>('todos');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProviderId, setSelectedProviderId] = useState<string>('todos');
+  const [isSelectProviderOpen, setIsSelectProviderOpen] = useState(false);
 
   // Payment modal quick state
   const [payingOrder, setPayingOrder] = useState<Order | null>(null);
@@ -110,8 +115,19 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
           </p>
         </div>
 
-        {/* Filters */}
+        {/* Filters and Actions */}
         <div className="flex flex-wrap items-center gap-3">
+          {onNewOrder && (
+            <button
+              type="button"
+              onClick={() => setIsSelectProviderOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-black shadow-md transition"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Nuevo Pedido a Proveedor</span>
+            </button>
+          )}
+
           <div className="relative">
             <input
               type="text"
@@ -241,8 +257,28 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
             <tbody className="divide-y divide-slate-100">
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-slate-400">
-                    No se encontraron pedidos con los criterios seleccionados.
+                  <td colSpan={7} className="p-10 text-center">
+                    <div className="max-w-sm mx-auto space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center mx-auto shadow-xs">
+                        <ShoppingBag className="w-6 h-6" />
+                      </div>
+                      <p className="font-extrabold text-slate-800 text-sm">
+                        No hay pedidos registrados en la bandeja
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Crea una orden de compra para abastecer insumos, recibir mercadería con remito y gestionar los pagos.
+                      </p>
+                      {onNewOrder && (
+                        <button
+                          type="button"
+                          onClick={() => setIsSelectProviderOpen(true)}
+                          className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition shadow-md inline-flex items-center gap-1.5"
+                        >
+                          <Plus className="w-4 h-4" />
+                          <span>Generar Primer Pedido</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ) : (
@@ -419,6 +455,81 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
                 className="px-5 py-2 bg-emerald-600 text-white font-extrabold text-xs rounded-xl hover:bg-emerald-700 shadow-md"
               >
                 Confirmar Pago
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: SELECCIONAR PROVEEDOR PARA NUEVO PEDIDO */}
+      {isSelectProviderOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b pb-3 border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
+                  <ShoppingBag className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900">
+                    Generar Pedido a Proveedor
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Selecciona a qué proveedor realizarás la compra
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsSelectProviderOpen(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 max-h-72 overflow-y-auto no-scrollbar">
+              {providers.filter((p) => p.active !== false).length === 0 ? (
+                <p className="text-center text-xs text-slate-400 py-4">
+                  No hay proveedores activos registrados en el sistema.
+                </p>
+              ) : (
+                providers
+                  .filter((p) => p.active !== false)
+                  .map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setIsSelectProviderOpen(false);
+                        if (onNewOrder) onNewOrder(p);
+                      }}
+                      className="w-full text-left p-3 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 transition flex items-center justify-between group"
+                    >
+                      <div>
+                        <span className="font-extrabold text-xs text-slate-900 block group-hover:text-orange-700">
+                          {p.name}
+                        </span>
+                        <span className="text-[10px] text-slate-500">
+                          {p.commercialName || p.rubro || 'General'}
+                        </span>
+                      </div>
+                      <span className="text-[11px] font-bold text-orange-600 group-hover:translate-x-0.5 transition">
+                        Armar Pedido →
+                      </span>
+                    </button>
+                  ))
+              )}
+            </div>
+
+            <div className="pt-2 border-t border-slate-100 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsSelectProviderOpen(false)}
+                className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-xl transition"
+              >
+                Cancelar
               </button>
             </div>
           </div>

@@ -1059,3 +1059,67 @@ export interface Combo {
   createdAt?: string;
   updatedAt?: string;
 }
+
+// ============================================================================
+// MÓDULO GASTOS
+// ============================================================================
+export type ExpenseOrigin = 'Recurrente' | 'Eventual' | 'Sueldos' | 'Proveedores';
+export type ExpenseStatus = 'Pendiente' | 'Pagado' | 'Anulado';
+export type RecurringFrequency = 'Semanal' | 'Quincenal' | 'Mensual' | 'Bimestral' | 'Anual';
+
+export interface Expense {
+  id: string;
+  expenseNumber: number;
+  date: string; // YYYY-MM-DD
+  concept: string;
+  providerId?: string;
+  providerName: string;
+  origin: ExpenseOrigin;
+  amount: number;
+  cashBoxId?: string;
+  cashBoxName?: string;
+  cashMovementId?: string;
+  status: ExpenseStatus;
+  paymentDate?: string;
+  paidByUserId?: string;
+  paidByUserName?: string;
+  notes?: string;
+  attachmentUrl?: string;
+  attachmentPath?: string;
+  attachmentName?: string;
+  attachmentMime?: string;
+  referenceId?: string;
+  recurringExpenseId?: string;
+  cancellationReason?: string;
+  cancelledAt?: string;
+  cancelledByUserName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecurringExpense {
+  id: string;
+  name: string;
+  providerId: string;
+  providerName: string;
+  frequency: RecurringFrequency;
+  scheduledDay: number;
+  habitualAmount: number;
+  defaultCashBoxId?: string;
+  notes?: string;
+  active: boolean;
+  lastGeneratedPeriod?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ExpenseFilters {
+  startDate?: string;
+  endDate?: string;
+  providerId?: string;
+  origin?: ExpenseOrigin | 'TODOS';
+  status?: ExpenseStatus | 'TODOS';
+  cashBoxId?: string;
+  searchTerm?: string;
+}
+

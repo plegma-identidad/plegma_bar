@@ -5,6 +5,7 @@ import { DEFAULT_RUBROS } from '../data/initialData';
 import { Button } from './ui/Button';
 import { FormField, TextInput, SelectInput, SelectWithInlineAdd } from './ui/Form';
 import { StandardDataTable, Column } from './ui/DataTable';
+import { CashBoxesConfigModal } from './cash/CashBoxesConfigModal';
 import {
   Package,
   Store,
@@ -2960,6 +2961,11 @@ export const MaestrosView: React.FC<MaestrosViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* VISTA 7: CAJA Y CUENTAS BANCARIAS */}
+      {activeSubView === 'cuentas' && (
+        <CashBoxesConfigModal onClose={() => setActiveSubView(null)} />
       )}
 
       {/* --- FORMULARIO SEPARADO EN MODAL INDEPENDIENTE PARA CREAR O EDITAR / ELIMINAR --- */}
