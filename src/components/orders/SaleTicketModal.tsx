@@ -103,6 +103,9 @@ export const SaleTicketModal: React.FC<SaleTicketModalProps> = ({ order, onClose
               <div key={item.id} className="flex justify-between items-start">
                 <div className="w-2/3">
                   <span className="font-bold">{item.quantity}x</span> {item.productName}
+                  {item.lineComment && (
+                    <p className="text-[10px] text-slate-500 print:text-black italic pl-4">{item.lineComment}</p>
+                  )}
                 </div>
                 <div className="w-1/3 text-right">
                   {fmt(item.unitPrice * item.quantity)}

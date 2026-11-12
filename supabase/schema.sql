@@ -1098,6 +1098,9 @@ ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS active BOOLEAN D
 ALTER TABLE IF EXISTS public.combo_section_items ALTER COLUMN default_quantity TYPE NUMERIC(12, 4);
 ALTER TABLE IF EXISTS public.combo_sections ALTER COLUMN min_quantity TYPE NUMERIC(12, 4);
 ALTER TABLE IF EXISTS public.combo_sections ALTER COLUMN max_quantity TYPE NUMERIC(12, 4);
+ALTER TABLE IF EXISTS public.sale_order_items ADD COLUMN IF NOT EXISTS selected_options JSONB;
+ALTER TABLE IF EXISTS public.sale_order_items ADD COLUMN IF NOT EXISTS line_comment TEXT;
+ALTER TABLE IF EXISTS public.sale_order_items ADD COLUMN IF NOT EXISTS side_option TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_providers_name ON public.providers(name);
 CREATE INDEX IF NOT EXISTS idx_providers_active ON public.providers(active);

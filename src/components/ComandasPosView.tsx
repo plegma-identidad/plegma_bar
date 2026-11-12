@@ -24,6 +24,7 @@ import {
   Save,
   Receipt,
   MapPin,
+  Pizza,
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { TextInput } from './ui/Form';
@@ -38,6 +39,7 @@ import { NewComandaModal } from './orders/NewComandaModal';
 import { OrderItemCommentModal } from './orders/OrderItemCommentModal';
 import { ComboComandaModal, DEMO_COMBO_MERIENDA_CLASICO } from './orders/ComboComandaModal';
 import { SaleTicketModal } from './orders/SaleTicketModal';
+import { PizzaSplitModal } from './orders/PizzaSplitModal';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(n);
@@ -99,11 +101,27 @@ export function ComandasPosView() {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [selectedCatalogItem, setSelectedCatalogItem] = useState<SaleProductCatalogItem | null>(null);
   const [selectedComboForComanda, setSelectedComboForComanda] = useState<Combo | null>(null);
+  const [isPizzaSplitModalOpen, setIsPizzaSplitModalOpen] = useState(false);
   const [billingOrder, setBillingOrder] = useState<SaleOrder | null>(null);
   const [comandaOrderPreview, setComandaOrderPreview] = useState<SaleOrder | null>(null);
   const [ticketOrderPreview, setTicketOrderPreview] = useState<SaleOrder | null>(null);
   const [editingCommentItem, setEditingCommentItem] = useState<SaleOrderItem | null>(null);
   const [isOrderSaved, setIsOrderSaved] = useState<boolean>(true);
+
+  // Agregar Pizza Combinada (Mitad y Mitad) a la comanda activa
+  const handleConfirmPizzaSplit = (item: SaleOrderItem) => {
+    if (!activeOrder) return;
+    const updatedItems = [...activeOrder.items, item];
+    const updatedTotal = updatedItems.reduce((acc, i) => acc + i.subtotal, 0);
+    const updatedOrder: SaleOrder = {
+      ...activeOrder,
+      items: updatedItems,
+      totalAmount: updatedTotal,
+    };
+    setActiveOrder(updatedOrder);
+    setIsOrderSaved(false);
+    showToast(`Se agregó ${item.productName} a la comanda. Presione "Guardar" para confirmar.`, 'success');
+  };
 
   // Paginación en Carta / Combos
   const [catalogPage, setCatalogPage] = useState<number>(1);
@@ -860,6 +878,38 @@ export function ComandasPosView() {
 
             {/* Product Cards Grid con Paginación */}
             <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {/* Tarjeta de Acceso Rápido a Pizza Combinada cuando se filtra por Pizzas */}
+              {categoryFilter.toLowerCase().includes('pizza') && catalogPage === 1 && (
+                <div
+                  onClick={() => setIsPizzaSplitModalOpen(true)}
+                  className="bg-gradient-to-br from-rose-50 to-orange-50 border-2 border-dashed border-rose-300 rounded-2xl p-3.5 shadow-xs hover:shadow-md hover:border-rose-500 cursor-pointer transition-all flex flex-col justify-between space-y-2.5 group"
+                >
+                  <div className="space-y-2">
+                    <div className="w-full h-24 rounded-xl overflow-hidden bg-rose-100/60 flex flex-col items-center justify-center text-rose-600 gap-1 border border-rose-200">
+                      <Pizza className="w-8 h-8 group-hover:scale-110 transition duration-300" />
+                      <span className="text-[10px] font-black uppercase tracking-wider text-rose-700">Mitad y Mitad</span>
+                    </div>
+                    <div className="space-y-0.5">
+                      <span className="text-[10px] font-black text-rose-600 uppercase tracking-wider">
+                        Personalizada
+                      </span>
+                      <h4 className="font-extrabold text-xs text-slate-900 group-hover:text-rose-700 transition-colors leading-tight">
+                        🍕 Pizza Combinada
+                      </h4>
+                      <p className="text-[11px] text-slate-500 line-clamp-2">
+                        Elige 2 mitades. Cada variedad se cobra al 50%.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-rose-200">
+                    <span className="text-[11px] font-black text-rose-600">50% + 50%</span>
+                    <span className="text-[10px] font-black bg-rose-600 text-white px-2.5 py-0.5 rounded-full shadow-2xs">
+                      Armar
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {paginatedCatalog.map((prod) => (
                 <div
                   key={prod.id}
@@ -967,6 +1017,16 @@ export function ComandasPosView() {
           isOpen={!!selectedComboForComanda}
           onClose={() => setSelectedComboForComanda(null)}
           onConfirmCombo={handleConfirmComboItem}
+        />
+      )}
+
+      {/* Modal 3.2: Pizza Combinada en Mitades (50% por variedad) */}
+      {isPizzaSplitModalOpen && activeOrder && (
+        <PizzaSplitModal
+          isOpen={isPizzaSplitModalOpen}
+          onClose={() => setIsPizzaSplitModalOpen(false)}
+          onConfirm={handleConfirmPizzaSplit}
+          saleProducts={saleProducts || []}
         />
       )}
 
