@@ -188,11 +188,15 @@ export const ComboModal: React.FC<ComboModalProps> = ({
         // Tomar la primera opción disponible como default
         const defaultItem = sec.items.find((i) => i.isAvailable !== false) || sec.items[0];
         if (defaultItem) {
-          totalCost += (Number(defaultItem.unitCost) || 0) * (Number(defaultItem.quantity) || 1);
+          const rawQty = defaultItem.quantity !== undefined && defaultItem.quantity !== null && defaultItem.quantity !== ('' as any)
+            ? parseFloat(String(defaultItem.quantity).replace(',', '.'))
+            : (Number(defaultItem.defaultQuantity) || 1);
+          const validQty = !isNaN(rawQty) && rawQty > 0 ? rawQty : 1;
+          totalCost += (Number(defaultItem.unitCost) || 0) * validQty;
         }
       }
     });
-    return totalCost;
+    return Math.round(totalCost * 100) / 100;
   }, [sections]);
 
   // Cálculo de Margen Bruto
@@ -499,14 +503,35 @@ export const ComboModal: React.FC<ComboModalProps> = ({
         profitMargin,
         active,
         imageUrl: imageUrl.trim() || undefined,
-        sections: sections.map((s, sIdx) => ({
-          ...s,
-          orderIndex: sIdx + 1,
-          items: (s.items || []).map((it, iIdx) => ({
-            ...it,
-            sortOrder: iIdx + 1,
-          })),
-        })),
+        sections: sections.map((s, sIdx) => {
+          const rawMin = s.minQuantity !== undefined && s.minQuantity !== null && s.minQuantity !== ('' as any)
+            ? parseFloat(String(s.minQuantity).replace(',', '.'))
+            : 0;
+          const rawMax = s.maxQuantity !== undefined && s.maxQuantity !== null && s.maxQuantity !== ('' as any)
+            ? parseFloat(String(s.maxQuantity).replace(',', '.'))
+            : 1;
+          const finalMin = !isNaN(rawMin) && rawMin >= 0 ? rawMin : 0;
+          const finalMax = !isNaN(rawMax) && rawMax > 0 ? rawMax : 1;
+
+          return {
+            ...s,
+            orderIndex: sIdx + 1,
+            minQuantity: finalMin,
+            maxQuantity: finalMax,
+            items: (s.items || []).map((it, iIdx) => {
+              const rawQty = it.quantity !== undefined && it.quantity !== null && it.quantity !== ('' as any)
+                ? parseFloat(String(it.quantity).replace(',', '.'))
+                : (Number(it.defaultQuantity) || 1);
+              const finalQty = !isNaN(rawQty) && rawQty > 0 ? rawQty : 1;
+              return {
+                ...it,
+                quantity: finalQty,
+                defaultQuantity: finalQty,
+                sortOrder: iIdx + 1,
+              };
+            }),
+          };
+        }),
       };
 
       const result = await addOrUpdateCombo(payload);
@@ -1129,30 +1154,52 @@ export const ComboModal: React.FC<ComboModalProps> = ({
                             <div>
                               <label className="font-bold text-slate-600 block mb-1">Cant. Mínima</label>
                               <input
-                                type="number"
-                                min="0"
-                                value={section.minQuantity}
-                                onChange={(e) =>
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0"
+                                value={section.minQuantity !== undefined && section.minQuantity !== null ? section.minQuantity : ''}
+                                onChange={(e) => {
+                                  const raw = e.target.value.replace(',', '.');
+                                  if (raw === '' || /^\d*\.?\d*$/.test(raw)) {
+                                    handleUpdateSection(sIdx, {
+                                      minQuantity: raw as any,
+                                    });
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  const raw = String(e.target.value).replace(',', '.');
+                                  const parsed = parseFloat(raw);
                                   handleUpdateSection(sIdx, {
-                                    minQuantity: Math.max(0, parseInt(e.target.value, 10) || 0),
-                                  })
-                                }
-                                className="w-full px-2 py-1.5 rounded-xl border border-slate-300 bg-white font-medium"
+                                    minQuantity: !isNaN(parsed) && parsed >= 0 ? parsed : 0,
+                                  });
+                                }}
+                                className="w-full px-2 py-1.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-800"
                               />
                             </div>
 
                             <div>
                               <label className="font-bold text-slate-600 block mb-1">Cant. Máxima</label>
                               <input
-                                type="number"
-                                min="1"
-                                value={section.maxQuantity}
-                                onChange={(e) =>
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="1"
+                                value={section.maxQuantity !== undefined && section.maxQuantity !== null ? section.maxQuantity : ''}
+                                onChange={(e) => {
+                                  const raw = e.target.value.replace(',', '.');
+                                  if (raw === '' || /^\d*\.?\d*$/.test(raw)) {
+                                    handleUpdateSection(sIdx, {
+                                      maxQuantity: raw as any,
+                                    });
+                                  }
+                                }}
+                                onBlur={(e) => {
+                                  const raw = String(e.target.value).replace(',', '.');
+                                  const parsed = parseFloat(raw);
                                   handleUpdateSection(sIdx, {
-                                    maxQuantity: Math.max(1, parseInt(e.target.value, 10) || 1),
-                                  })
-                                }
-                                className="w-full px-2 py-1.5 rounded-xl border border-slate-300 bg-white font-medium"
+                                    maxQuantity: !isNaN(parsed) && parsed > 0 ? parsed : 1,
+                                  });
+                                }}
+                                className="w-full px-2 py-1.5 rounded-xl border border-slate-300 bg-white font-medium text-slate-800"
                               />
                             </div>
 
@@ -1265,22 +1312,35 @@ export const ComboModal: React.FC<ComboModalProps> = ({
                                         />
                                       </div>
 
-                                      {/* Cantidad */}
+                                      {/* Cantidad con soporte fluido de decimales (. y ,) */}
                                       <div className="w-24 shrink-0 flex items-center gap-1 bg-white px-2 py-1 rounded-xl border border-slate-300">
                                         <span className="text-[10px] text-slate-400 font-bold">Cant:</span>
                                         <input
-                                          type="number"
-                                          step="any"
-                                          min="0.01"
-                                          value={currentQuantity}
+                                          type="text"
+                                          inputMode="decimal"
+                                          placeholder="1"
+                                          value={currentQuantity !== undefined && currentQuantity !== null ? currentQuantity : ''}
                                           onChange={(e) => {
-                                            const val = parseFloat(e.target.value);
+                                            const raw = e.target.value.replace(',', '.');
+                                            // Permitir dígitos y a lo sumo un punto decimal (ej: "", "0", "0.", "0.5")
+                                            if (raw === '' || /^\d*\.?\d*$/.test(raw)) {
+                                              const parsed = parseFloat(raw);
+                                              handleUpdateItem(sIdx, iIdx, {
+                                                quantity: raw as any,
+                                                defaultQuantity: isNaN(parsed) ? (raw === '' ? ('' as any) : 0) : parsed,
+                                              });
+                                            }
+                                          }}
+                                          onBlur={(e) => {
+                                            const raw = String(e.target.value).replace(',', '.');
+                                            const parsed = parseFloat(raw);
+                                            const finalVal = !isNaN(parsed) && parsed > 0 ? parsed : 1;
                                             handleUpdateItem(sIdx, iIdx, {
-                                              quantity: isNaN(val) ? ('' as any) : val,
-                                              defaultQuantity: isNaN(val) ? 1 : val,
+                                              quantity: finalVal,
+                                              defaultQuantity: finalVal,
                                             });
                                           }}
-                                          className="w-full text-right font-mono font-bold text-xs outline-hidden"
+                                          className="w-full text-right font-mono font-bold text-xs outline-hidden bg-transparent"
                                         />
                                         <span className="text-[10px] text-slate-500 font-medium">
                                           {it.unit || 'u'}

@@ -1095,6 +1095,9 @@ ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS whatsapp TEXT;
 ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS cuit TEXT;
 ALTER TABLE IF EXISTS public.providers ADD COLUMN IF NOT EXISTS active BOOLEAN DEFAULT true;
+ALTER TABLE IF EXISTS public.combo_section_items ALTER COLUMN default_quantity TYPE NUMERIC(12, 4);
+ALTER TABLE IF EXISTS public.combo_sections ALTER COLUMN min_quantity TYPE NUMERIC(12, 4);
+ALTER TABLE IF EXISTS public.combo_sections ALTER COLUMN max_quantity TYPE NUMERIC(12, 4);
 
 CREATE INDEX IF NOT EXISTS idx_providers_name ON public.providers(name);
 CREATE INDEX IF NOT EXISTS idx_providers_active ON public.providers(active);

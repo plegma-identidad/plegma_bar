@@ -262,7 +262,9 @@ export const combosService = {
         // Agrupar items por sección
         const itemsBySection = new Map<string, ComboSectionItem[]>();
         (itemsData || []).forEach((row: any) => {
-          const qty = Number(row.default_quantity) || 1;
+          const qty = row.default_quantity !== null && row.default_quantity !== undefined && !isNaN(Number(row.default_quantity))
+            ? Number(row.default_quantity)
+            : 1;
           const isAvail = row.available ?? true;
           const it: ComboSectionItem = {
             id: row.id,
@@ -294,8 +296,8 @@ export const combosService = {
             name: row.name,
             sortOrder: Number(row.sort_order) || 1,
             required: row.required ?? true,
-            minQuantity: Number(row.min_quantity) || 1,
-            maxQuantity: Number(row.max_quantity) || 1,
+            minQuantity: row.min_quantity !== null && row.min_quantity !== undefined ? Number(row.min_quantity) : 0,
+            maxQuantity: row.max_quantity !== null && row.max_quantity !== undefined ? Number(row.max_quantity) : 1,
             allowRepeat: row.allow_repeat ?? false,
             componentTypeAllowed: row.component_type_allowed || 'ALL',
             items: itemsBySection.get(row.id) || [],
@@ -447,8 +449,8 @@ export const combosService = {
             name: sec.name.trim(),
             sort_order: sec.sortOrder ?? sec.orderIndex ?? sIdx + 1,
             required: sec.required ?? true,
-            min_quantity: Number(sec.minQuantity) || 1,
-            max_quantity: Number(sec.maxQuantity) || 1,
+            min_quantity: Number(sec.minQuantity) >= 0 ? Number(sec.minQuantity) : 0,
+            max_quantity: Number(sec.maxQuantity) > 0 ? Number(sec.maxQuantity) : 1,
             allow_repeat: sec.allowRepeat ?? false,
             component_type_allowed: toDbAllowedType(sec.componentTypeAllowed),
           };
@@ -466,19 +468,26 @@ export const combosService = {
 
           // Insertar items de la sección
           if (sec.items && sec.items.length > 0) {
-            const itemsPayload = sec.items.map((it, itIdx) => ({
-              section_id: savedSec.id,
-              combo_id: comboId,
-              component_type: toDbComponentType(it.componentType),
-              component_id: it.componentId,
-              component_name: it.componentName,
-              default_quantity: Number(it.defaultQuantity ?? it.quantity) || 1,
-              unit: it.unit || 'u',
-              unit_cost: Number(it.unitCost) || 0,
-              extra_price: Number(it.extraPrice) || 0,
-              available: it.available !== undefined ? it.available : (it.isAvailable !== undefined ? it.isAvailable : true),
-              sort_order: it.sortOrder ?? itIdx + 1,
-            }));
+            const itemsPayload = sec.items.map((it, itIdx) => {
+              const qtyRaw = it.defaultQuantity !== undefined && it.defaultQuantity !== null && it.defaultQuantity !== ('' as any)
+                ? Number(it.defaultQuantity)
+                : (it.quantity !== undefined && it.quantity !== null && it.quantity !== ('' as any) ? Number(it.quantity) : 1);
+              const finalQty = !isNaN(qtyRaw) && qtyRaw > 0 ? qtyRaw : 1;
+
+              return {
+                section_id: savedSec.id,
+                combo_id: comboId,
+                component_type: toDbComponentType(it.componentType),
+                component_id: it.componentId,
+                component_name: it.componentName,
+                default_quantity: finalQty,
+                unit: it.unit || 'u',
+                unit_cost: Number(it.unitCost) || 0,
+                extra_price: Number(it.extraPrice) || 0,
+                available: it.available !== undefined ? it.available : (it.isAvailable !== undefined ? it.isAvailable : true),
+                sort_order: it.sortOrder ?? itIdx + 1,
+              };
+            });
 
             const { error: itemsErr } = await supabase
               .from('combo_section_items')
