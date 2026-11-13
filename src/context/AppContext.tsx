@@ -68,6 +68,7 @@ import { saleProductsService } from '../services/saleProductsService';
 import { productionsService } from '../services/productionsService';
 import { combosService } from '../services/combosService';
 import { storageService } from '../services/storageService';
+import { purchaseOrdersService } from '../services/purchaseOrdersService';
 import {
   INITIAL_PROVIDERS,
   INITIAL_ITEMS,
@@ -406,7 +407,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [clients, setClients] = useState<Client[]>([]);
   const [items, setItems] = useState<Item[]>([]);
   const [providerItems, setProviderItems] = useState<ProviderItemRelation[]>([]);
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
+  const [orders, setOrders] = useState<Order[]>(() => purchaseOrdersService.getAllLocal());
   const [stockCounts, setStockCounts] = useState<StockCount[]>([]);
   const [receptionHours, setReceptionHours] = useState<ReceptionHoursConfig>(INITIAL_RECEPTION_HOURS);
   const [priceHistory, setPriceHistory] = useState<PriceHistoryEntry[]>(INITIAL_PRICE_HISTORY);
@@ -452,7 +453,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const fetchInitialDataFromSupabase = async () => {
       try {
-        const [cats, subcats, units, saleCats, saleSubc, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedOpBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts, prodCats, prodSubc, prodUnits, prodWh, fetchedCombos] = await Promise.all([
+        const [cats, subcats, units, saleCats, saleSubc, provs, fetchedItems, fetchedRelations, fetchedClients, fetchedEmps, fetchedUsers, fetchedSaleOrders, fetchedMasterBoxes, fetchedOpBoxes, fetchedShifts, fetchedLines, fetchedMovements, fetchedCcMovements, fetchedReceipts, fetchedEmployeeConsumptions, fetchedAuditLogs, fetchedSaleProducts, fetchedProductionProducts, prodCats, prodSubc, prodUnits, prodWh, fetchedCombos, fetchedPurchaseOrders] = await Promise.all([
           configService.getByType('category'),
           configService.getByType('subcategory'),
           configService.getByType('unit'),
@@ -481,6 +482,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           configService.getByType('production_unit'),
           configService.getByType('production_warehouse'),
           combosService.getAll(),
+          purchaseOrdersService.getAll(),
         ]);
         setItemCategories(cats);
         setItemSubcategories(subcats);
@@ -577,6 +579,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSaleProducts(fetchedSaleProducts);
         setProductionProducts(fetchedProductionProducts);
         setCombos(fetchedCombos);
+        if (fetchedPurchaseOrders && fetchedPurchaseOrders.length > 0) {
+          setOrders(fetchedPurchaseOrders);
+        }
       } catch (err) {
         console.error('Error al cargar datos iniciales de Supabase:', err);
       }
@@ -3374,6 +3379,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Save to LocalStorage
   useEffect(() => {
+    purchaseOrdersService.saveAllLocal(orders);
+  }, [orders]);
+
+  useEffect(() => {
     try {
       const payload = {
         providers,
@@ -3655,14 +3664,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const createOrder = (order: Order) => {
-    setOrders((prev) => [order, ...prev]);
+    setOrders((prev) => [order, ...prev.filter((o) => o.id !== order.id)]);
+    purchaseOrdersService.create(order);
     logAudit('Crear Pedido', 'pedido', order.id, `Pedido #${order.orderNumber} por $${order.estimatedTotal.toLocaleString('es-AR')}`);
   };
 
   const updateOrderStatus = (orderId: string, newStatus: ProcessState) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o))
-    );
+    setOrders((prev) => {
+      const updated = prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o));
+      const target = updated.find((o) => o.id === orderId);
+      if (target) purchaseOrdersService.update(target);
+      return updated;
+    });
     logAudit('Cambiar Estado de Pedido', 'pedido', orderId, `Nuevo estado: ${newStatus}`);
   };
 
@@ -3731,6 +3744,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // 2. Update order status
     const isPaid = paymentStatus === 'Pagado';
 
+    let orderToUpdate: Order | undefined;
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id !== orderId) return o;
@@ -3746,7 +3760,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             ? 'Pendiente de pago'
             : 'Entregado / Ingresado';
 
-        return {
+        const updatedOrder: Order = {
           ...o,
           status: finalStatus,
           receptionDate: getLocalDatetimeString(),
@@ -3763,8 +3777,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           paymentReceiptNumber: paymentDetails?.receiptNumber,
           paymentDate: isPaid ? getLocalDatetimeString() : undefined,
         };
+        orderToUpdate = updatedOrder;
+        return updatedOrder;
       })
     );
+    if (orderToUpdate) {
+      purchaseOrdersService.update(orderToUpdate);
+    }
 
     // 3. If paid, create expense record
     if (paymentDetails && paymentDetails.amount > 0) {
@@ -3798,6 +3817,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     account: string,
     receiptNumber?: string
   ) => {
+    let orderToUpdate: Order | undefined;
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id !== orderId) return o;
@@ -3808,7 +3828,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const newDebt = Math.max(0, totalAmount - newPaidTotal);
         const isFullyPaid = newDebt === 0;
 
-        return {
+        const updatedOrder: Order = {
           ...o,
           paymentStatus: isFullyPaid ? 'Pagado' : 'Pago parcial',
           status: isFullyPaid ? 'Pagado' : 'Pendiente de pago',
@@ -3819,8 +3839,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           paymentReceiptNumber: receiptNumber || o.paymentReceiptNumber,
           paymentDate: getLocalDatetimeString(),
         };
+        orderToUpdate = updatedOrder;
+        return updatedOrder;
       })
     );
+    if (orderToUpdate) {
+      purchaseOrdersService.update(orderToUpdate);
+    }
 
     const targetOrder = orders.find((o) => o.id === orderId);
     if (targetOrder) {

@@ -324,9 +324,9 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
                       </td>
 
                       <td className="p-3 text-right">
-                        {ord.remainingDebt && ord.remainingDebt > 0 ? (
+                        {(ord.remainingDebt != null && ord.remainingDebt > 0) || (ord.remainingDebt == null && ord.paymentStatus === 'Pendiente de pago') ? (
                           <span className="font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                            $ {ord.remainingDebt.toLocaleString('es-AR')}
+                            $ {(ord.remainingDebt ?? (ord.finalReceivedTotal || ord.estimatedTotal)).toLocaleString('es-AR')}
                           </span>
                         ) : (
                           <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200 text-[10px]">
@@ -360,11 +360,12 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
                           )}
 
                           {/* Record Payment */}
-                          {ord.remainingDebt && ord.remainingDebt > 0 ? (
+                          {(ord.remainingDebt != null && ord.remainingDebt > 0) || (ord.remainingDebt == null && ord.paymentStatus === 'Pendiente de pago') ? (
                             <button
                               onClick={() => {
                                 setPayingOrder(ord);
-                                setPayAmountInput(ord.remainingDebt?.toString() || '');
+                                const defaultAmt = ord.remainingDebt ?? (ord.finalReceivedTotal || ord.estimatedTotal);
+                                setPayAmountInput(defaultAmt.toString());
                               }}
                               className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1"
                             >

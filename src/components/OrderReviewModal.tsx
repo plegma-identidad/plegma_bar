@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Provider, Order, OrderItem } from '../types';
+import { Provider, Order, OrderItem, Item } from '../types';
 import {
   X,
   ShoppingCart,
@@ -30,6 +30,10 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
   const pItemRels = providerItems.filter((pi) => pi.providerId === provider.id && pi.active);
   const pItems = items.filter((item) => pItemRels.some((rel) => rel.itemId === item.id));
 
+  // Current items included in order review (allows adding extra items)
+  const [currentItems, setCurrentItems] = useState<Item[]>(pItems);
+  const [selectedExtraItemId, setSelectedExtraItemId] = useState<string>('');
+
   // Initialize order items with calculated suggested quantities
   const [orderItemsMap, setOrderItemsMap] = useState<{
     [itemId: string]: {
@@ -52,12 +56,12 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
 
     pItems.forEach((item) => {
       const diffToMax = Math.max(0, item.maxStock - item.currentStock);
-      const suggestedPacks = Math.ceil(diffToMax / item.packQuantity);
+      const suggestedPacks = Math.ceil(diffToMax / (item.packQuantity || 1));
 
       initial[item.id] = {
         suggestedQty: Math.max(1, suggestedPacks),
         finalQty: Math.max(1, suggestedPacks),
-        refPrice: item.currentPrice * item.packQuantity, // Reference price per purchase unit
+        refPrice: (item.currentPrice || 0) * (item.packQuantity || 1), // Reference price per purchase unit
         notes: '',
         active: true,
       };
@@ -94,8 +98,30 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
     }));
   };
 
+  const handleAddExtraItem = (itemId: string) => {
+    if (!itemId) return;
+    const itemToAdd = items.find((it) => it.id === itemId);
+    if (!itemToAdd) return;
+
+    if (!currentItems.some((it) => it.id === itemId)) {
+      setCurrentItems((prev) => [...prev, itemToAdd]);
+    }
+
+    setOrderItemsMap((prev) => ({
+      ...prev,
+      [itemId]: {
+        suggestedQty: 1,
+        finalQty: 1,
+        refPrice: (itemToAdd.currentPrice || 0) * (itemToAdd.packQuantity || 1),
+        notes: '',
+        active: true,
+      },
+    }));
+    setSelectedExtraItemId('');
+  };
+
   // Calculate estimated order total
-  const selectedItemsList = pItems.filter((item) => orderItemsMap[item.id]?.active);
+  const selectedItemsList = currentItems.filter((item) => orderItemsMap[item.id]?.active);
 
   const estimatedTotalSum = selectedItemsList.reduce((sum, item) => {
     const entry = orderItemsMap[item.id];
@@ -121,8 +147,10 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
       };
     });
 
+    const newId = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'ord-' + Date.now();
+
     const newOrder: Order = {
-      id: 'ord-' + Date.now(),
+      id: newId,
       orderNumber: 'PED-2026-' + Math.floor(1000 + Math.random() * 9000),
       date: new Date().toISOString(),
       providerId: provider.id,
@@ -135,6 +163,8 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
       receptionHoursSnapshot: receptionHours,
       estimatedTotal: estimatedTotalSum,
       paymentStatus: 'Pendiente de pago',
+      paidAmount: 0,
+      remainingDebt: estimatedTotalSum,
     };
 
     createOrder(newOrder);
@@ -205,18 +235,47 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
 
           {/* Editable Items Table */}
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-            <div className="p-3 bg-slate-100 border-b border-slate-200 flex items-center justify-between text-xs font-bold text-slate-700">
-              <span>Listado de Insumos Sugeridos</span>
-              <span>
-                {selectedItemsList.length} de {pItems.length} insumos seleccionados
-              </span>
+            <div className="p-3 bg-slate-100 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-bold text-slate-700">
+              <div className="flex items-center gap-2">
+                <span>Listado de Insumos del Pedido</span>
+                <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                  {selectedItemsList.length} de {currentItems.length} seleccionados
+                </span>
+              </div>
+
+              {/* Selector para agregar insumos adicionales */}
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedExtraItemId}
+                  onChange={(e) => setSelectedExtraItemId(e.target.value)}
+                  className="py-1 px-2.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 max-w-xs focus:outline-none focus:ring-2 focus:ring-orange-500"
+                >
+                  <option value="">-- Agregar otro insumo al pedido --</option>
+                  {items
+                    .filter((it) => !selectedItemsList.some((sel) => sel.id === it.id))
+                    .map((it) => (
+                      <option key={it.id} value={it.id}>
+                        {it.name} ({it.purchaseUnit})
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => handleAddExtraItem(selectedExtraItemId)}
+                  disabled={!selectedExtraItemId}
+                  className="px-3 py-1 bg-orange-600 hover:bg-orange-700 disabled:opacity-40 text-white rounded-lg text-xs font-bold transition flex items-center gap-1 shadow-xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Sumar</span>
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-                    <th className="p-3 w-10 text-center">Incluir</th>
+                    <th className="p-3 w-10 text-center">Quitar</th>
                     <th className="p-3">Insumo</th>
                     <th className="p-3">Unidad de Compra</th>
                     <th className="p-3 text-center">Sugerido</th>
@@ -226,55 +285,69 @@ export const OrderReviewModal: React.FC<OrderReviewModalProps> = ({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {pItems.map((item) => {
-                    const entry = orderItemsMap[item.id];
-                    if (!entry || !entry.active) return null;
+                  {currentItems.length === 0 || selectedItemsList.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="p-8 text-center text-slate-400">
+                        <AlertCircle className="w-6 h-6 mx-auto mb-2 text-amber-500 opacity-80" />
+                        <p className="font-bold text-slate-700 text-xs">
+                          No hay insumos cargados en este pedido todavía.
+                        </p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          Seleccioná un insumo del desplegable superior y hacé clic en "Sumar" para incluirlo.
+                        </p>
+                      </td>
+                    </tr>
+                  ) : (
+                    currentItems.map((item) => {
+                      const entry = orderItemsMap[item.id];
+                      if (!entry || !entry.active) return null;
 
-                    const subtotal = entry.finalQty * entry.refPrice;
+                      const subtotal = entry.finalQty * entry.refPrice;
 
-                    return (
-                      <tr
-                        key={item.id}
-                        className="hover:bg-slate-50/80 transition"
-                      >
-                        <td className="p-3 text-center">
-                          <button
-                            onClick={() => handleToggleItem(item.id)}
-                            className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition"
-                            title="Eliminar línea"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </td>
-                        <td className="p-3">
-                          <span className="font-bold text-slate-900 block">{item.name}</span>
-                          <span className="text-[10px] text-slate-400">
-                            Presentación: {item.purchaseUnit}
-                          </span>
-                        </td>
-                        <td className="p-3 font-semibold text-slate-700">{item.purchaseUnit}</td>
-                        <td className="p-3 text-center font-bold text-amber-700 bg-amber-50/50">
-                          {entry.suggestedQty}
-                        </td>
-                        <td className="p-3 text-center">
-                          <input
-                            type="number"
-                            min="1"
-                            disabled={!entry.active}
-                            value={entry.finalQty}
-                            onChange={(e) => handleQtyChange(item.id, Number(e.target.value))}
-                            className="w-20 py-1 px-2 text-center text-xs font-black bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
-                          />
-                        </td>
-                        <td className="p-3 text-right text-slate-600">
-                          $ {entry.refPrice.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                        <td className="p-3 text-right font-black text-slate-900">
-                          $ {subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                      </tr>
-                    );
-                  })}
+                      return (
+                        <tr
+                          key={item.id}
+                          className="hover:bg-slate-50/80 transition"
+                        >
+                          <td className="p-3 text-center">
+                            <button
+                              onClick={() => handleToggleItem(item.id)}
+                              className="p-1.5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition"
+                              title="Quitar del pedido"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                          <td className="p-3">
+                            <span className="font-bold text-slate-900 block">{item.name}</span>
+                            <span className="text-[10px] text-slate-400">
+                              Presentación: {item.purchaseUnit}
+                            </span>
+                          </td>
+                          <td className="p-3 font-semibold text-slate-700">{item.purchaseUnit}</td>
+                          <td className="p-3 text-center font-bold text-amber-700 bg-amber-50/50">
+                            {entry.suggestedQty}
+                          </td>
+                          <td className="p-3 text-center">
+                            <input
+                              type="number"
+                              min="1"
+                              disabled={!entry.active}
+                              value={entry.finalQty}
+                              onChange={(e) => handleQtyChange(item.id, Number(e.target.value))}
+                              className="w-20 py-1 px-2 text-center text-xs font-black bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500"
+                            />
+                          </td>
+                          <td className="p-3 text-right text-slate-600">
+                            $ {entry.refPrice.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="p-3 text-right font-black text-slate-900">
+                            $ {subtotal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>
