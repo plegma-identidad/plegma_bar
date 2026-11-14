@@ -17,16 +17,6 @@ export const purchaseOrdersService = {
           return parsed;
         }
       }
-
-      // Fallback a almacenamiento legado si existiera
-      const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-      if (legacy) {
-        const parsedLegacy = JSON.parse(legacy);
-        if (Array.isArray(parsedLegacy.orders) && parsedLegacy.orders.length > 0) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsedLegacy.orders));
-          return parsedLegacy.orders;
-        }
-      }
     } catch (e) {
       console.warn('Error leyendo orders desde localStorage:', e);
     }
@@ -246,13 +236,38 @@ export const purchaseOrdersService = {
    */
   async delete(orderId: string): Promise<void> {
     const local = this.getAllLocal();
-    const updated = local.filter((o) => o.id !== orderId);
+    const updated = local.filter((o) => o.id !== orderId && o.orderNumber !== orderId);
     this.saveAllLocal(updated);
 
     try {
-      await supabase.from('purchase_orders').delete().eq('id', orderId);
+      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(orderId);
+      if (isUUID) {
+        await supabase.from('purchase_order_items').delete().eq('order_id', orderId);
+        await supabase.from('purchase_orders').delete().eq('id', orderId);
+      } else {
+        await supabase.from('purchase_orders').delete().eq('order_number', orderId);
+      }
     } catch (e) {
       console.warn('Excepción eliminando purchase_order en Supabase:', e);
+    }
+  },
+
+  /**
+   * Vacía todos los pedidos en local y en Supabase
+   */
+  async clearAll(): Promise<void> {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+      localStorage.removeItem('plegma_orders');
+    } catch {}
+
+    try {
+      // Eliminar registros de Supabase
+      await supabase.from('purchase_order_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('purchase_orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    } catch (e) {
+      console.warn('Error clearing purchase_orders in Supabase:', e);
     }
   },
 };

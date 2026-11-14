@@ -10,6 +10,7 @@ import {
 import { useApp } from '../../context/AppContext';
 import { expensesService } from '../../services/expensesService';
 import { ExpenseModal } from './ExpenseModal';
+import { ExpenseEditModal } from './ExpenseEditModal';
 import { ExpensePaymentModal } from './ExpensePaymentModal';
 import { RecurringExpensesModal } from './RecurringExpensesModal';
 import { ExpenseDetailModal } from './ExpenseDetailModal';
@@ -27,12 +28,15 @@ import {
   Clock,
   AlertTriangle,
   Eye,
+  Edit2,
   XCircle,
   Paperclip,
   Download,
   RefreshCw,
   ArrowUpDown,
   Tag,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 export const ExpensesView: React.FC = () => {
@@ -65,9 +69,19 @@ export const ExpensesView: React.FC = () => {
   const [selectedCashBoxId, setSelectedCashBoxId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
 
+  // Paginación
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // Resetear paginación al cambiar filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [startDate, endDate, selectedProviderId, selectedOrigin, selectedStatus, selectedCashBoxId]);
+
   // Modales
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState<boolean>(false);
   const [isRecurringModalOpen, setIsRecurringModalOpen] = useState<boolean>(false);
+  const [editTargetExpense, setEditTargetExpense] = useState<Expense | null>(null);
   const [paymentTargetExpense, setPaymentTargetExpense] = useState<Expense | null>(null);
   const [detailTargetExpense, setDetailTargetExpense] = useState<Expense | null>(null);
   const [voidTargetExpense, setVoidTargetExpense] = useState<Expense | null>(null);
@@ -134,6 +148,15 @@ export const ExpensesView: React.FC = () => {
 
     return { totalAmount, paidAmount, pendingAmount, totalCount };
   }, [expenses]);
+
+  // Paginación calculada
+  const totalPages = Math.max(1, Math.ceil(expenses.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, expenses.length);
+  const paginatedExpenses = useMemo(() => {
+    return expenses.slice(startIndex, endIndex);
+  }, [expenses, startIndex, endIndex]);
 
   // Shortcuts de fecha
   const setQuickDateRange = (preset: 'today' | 'thisMonth' | 'all') => {
@@ -518,7 +541,7 @@ export const ExpensesView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                expenses.map((expense) => {
+                paginatedExpenses.map((expense) => {
                   const hasAttachment = Boolean(expense.attachmentUrl);
 
                   return (
@@ -626,13 +649,24 @@ export const ExpensesView: React.FC = () => {
                         <div className="flex items-center justify-end gap-1.5">
                           {/* Botón Pagar si está Pendiente */}
                           {expense.status === 'Pendiente' && (
-                            <button
-                              type="button"
-                              onClick={() => setPaymentTargetExpense(expense)}
-                              className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black shadow-2xs transition flex items-center gap-1"
-                            >
-                              <CheckCircle2 className="w-3 h-3" /> Pagar
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => setEditTargetExpense(expense)}
+                                title="Editar Gasto Pendiente"
+                                className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => setPaymentTargetExpense(expense)}
+                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-black shadow-2xs transition flex items-center gap-1"
+                              >
+                                <CheckCircle2 className="w-3 h-3" /> Pagar
+                              </button>
+                            </>
                           )}
 
                           {/* Botón Ver Detalle */}
@@ -664,6 +698,61 @@ export const ExpensesView: React.FC = () => {
               )}
             </tbody>
           </table>
+
+          {/* Barra de Paginación */}
+          <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+            <div className="flex items-center gap-2">
+              <span>Mostrar</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-amber-500 cursor-pointer"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span>gastos por página</span>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <span className="font-medium text-slate-500">
+                {expenses.length === 0
+                  ? '0 gastos'
+                  : `Mostrando ${startIndex + 1} - ${endIndex} de ${expenses.length}`}
+              </span>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={safeCurrentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <span className="px-2 font-bold text-slate-700">
+                  {safeCurrentPage} / {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  disabled={safeCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  title="Página siguiente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -685,6 +774,18 @@ export const ExpensesView: React.FC = () => {
           cashBoxes={operativeCashBoxes}
           onClose={() => setIsRecurringModalOpen(false)}
           onRefreshExpenses={() => loadExpenses()}
+          showToast={showToast}
+        />
+      )}
+
+      {/* MODAL 2.5: EDICIÓN DE GASTO PENDIENTE */}
+      {editTargetExpense && (
+        <ExpenseEditModal
+          expense={editTargetExpense}
+          providers={providers}
+          cashBoxes={operativeCashBoxes}
+          onClose={() => setEditTargetExpense(null)}
+          onSuccess={() => loadExpenses()}
           showToast={showToast}
         />
       )}

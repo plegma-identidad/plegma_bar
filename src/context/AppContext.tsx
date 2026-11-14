@@ -69,6 +69,7 @@ import { productionsService } from '../services/productionsService';
 import { combosService } from '../services/combosService';
 import { storageService } from '../services/storageService';
 import { purchaseOrdersService } from '../services/purchaseOrdersService';
+import { expensesService } from '../services/expensesService';
 import {
   INITIAL_PROVIDERS,
   INITIAL_ITEMS,
@@ -345,6 +346,8 @@ interface AppContextType {
   // Orders
   createOrder: (order: Order) => void;
   updateOrderStatus: (orderId: string, newStatus: ProcessState) => void;
+  deleteOrder: (orderId: string) => Promise<void>;
+  clearAllOrders: () => Promise<void>;
 
   // Reception
   receiveGoods: (
@@ -428,6 +431,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Limpiar localStorage legado de opciones de configuración, proveedores, clientes, insumos, empleados, usuarios, comandas, caja, CC y consumos
   useEffect(() => {
     try {
+      localStorage.removeItem('plegma_orders');
+      localStorage.removeItem('plegma_cached_expenses');
+      localStorage.removeItem('gastronomic_erp_state_clean_v1');
       localStorage.removeItem('plegma_item_categories');
       localStorage.removeItem('plegma_item_subcategories');
       localStorage.removeItem('plegma_item_units');
@@ -579,9 +585,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSaleProducts(fetchedSaleProducts);
         setProductionProducts(fetchedProductionProducts);
         setCombos(fetchedCombos);
-        if (fetchedPurchaseOrders && fetchedPurchaseOrders.length > 0) {
-          setOrders(fetchedPurchaseOrders);
-        }
+        setOrders(fetchedPurchaseOrders || []);
       } catch (err) {
         console.error('Error al cargar datos iniciales de Supabase:', err);
       }
@@ -1335,6 +1339,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     cashRegister: string
   ) => {
     const nowStr = getLocalDatetimeString();
+    const targetPayrun = payruns.find((p) => p.id === payrunId);
+    const targetEmp = targetPayrun?.employeesDetails.find((d) => d.employeeId === employeeId);
+
     setPayruns((prev) =>
       prev.map((pr) => {
         if (pr.id !== payrunId) return pr;
@@ -1365,6 +1372,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
       })
     );
+
+    // Integración con Bandeja Unificada de Gastos (Origen: 'Sueldos')
+    if (targetEmp) {
+      const matchedBox = operativeCashBoxes.find(
+        (b) => b.name.toLowerCase() === cashRegister.toLowerCase() || b.id === cashRegister
+      );
+
+      expensesService.recordSalaryExpense({
+        payrunId,
+        employeeId,
+        employeeName: targetEmp.employeeName,
+        amount: targetEmp.netAmount,
+        paymentDate: nowStr,
+        cashBoxId: matchedBox?.id,
+        cashBoxName: cashRegister,
+        paidByUserName: `Usuario (${userRole.toUpperCase()})`,
+        notes: `Liquidación ${targetPayrun?.periodName || payrunId} - Método: ${paymentMethod}`,
+      });
+    }
   };
 
   const unmarkEmployeePaid = (payrunId: string, employeeId: string) => {
@@ -1398,9 +1424,29 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         };
       })
     );
+
+    // Anular el gasto asociado en la Bandeja Unificada de Gastos
+    expensesService.voidExpenseByReferenceId(
+      `salary_${payrunId}_${employeeId}`,
+      'Pago de haberes desmarcado desde panel de liquidaciones de RRHH',
+      `Usuario (${userRole.toUpperCase()})`
+    );
   };
 
   const voidPayrun = (payrunId: string) => {
+    const target = payruns.find((p) => p.id === payrunId);
+    if (target) {
+      target.employeesDetails.forEach((emp) => {
+        if (emp.status === 'Pagado') {
+          expensesService.voidExpenseByReferenceId(
+            `salary_${payrunId}_${emp.employeeId}`,
+            `Liquidación anulada: ${target.periodName || payrunId}`,
+            `Usuario (${userRole.toUpperCase()})`
+          );
+        }
+      });
+    }
+
     setPayruns((prev) =>
       prev.map((pr) => (pr.id === payrunId ? { ...pr, status: 'Anulada' } : pr))
     );
@@ -3679,6 +3725,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     logAudit('Cambiar Estado de Pedido', 'pedido', orderId, `Nuevo estado: ${newStatus}`);
   };
 
+  const deleteOrder = async (orderId: string) => {
+    await purchaseOrdersService.delete(orderId);
+    setOrders((prev) => prev.filter((o) => o.id !== orderId && o.orderNumber !== orderId));
+    logAudit('Eliminar Pedido', 'pedido', orderId, 'Pedido eliminado');
+  };
+
+  const clearAllOrders = async () => {
+    await purchaseOrdersService.clearAll();
+    setOrders([]);
+    logAudit('Vaciar Pedidos', 'pedido', 'todos', 'Se vaciaron todos los pedidos de prueba');
+  };
+
   // Receive Goods (Ingreso de Mercadería)
   const receiveGoods = (
     orderId: string,
@@ -3799,6 +3857,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         notes: `Pago al ingresar pedido #${targetOrder.orderNumber}`,
       };
       setExpenses((prev) => [exp, ...prev]);
+
+      // Integración con Bandeja Unificada de Gastos
+      const prov = providers.find((p) => p.id === targetOrder.providerId);
+      expensesService.recordPurchaseExpense({
+        orderId: targetOrder.id,
+        invoiceNumber: invoiceNumber,
+        providerId: targetOrder.providerId,
+        providerName: prov?.name || 'Proveedor',
+        amount: paymentDetails.amount,
+        paymentDate: getLocalDatetimeString(),
+        cashBoxName: paymentDetails.account,
+        paidByUserName: `Usuario (${userRole.toUpperCase()})`,
+        notes: `Pago recepción pedido #${targetOrder.orderNumber} - Remito/Fac: ${invoiceNumber} (${paymentDetails.method || 'Efectivo'})`,
+      });
     }
 
     logAudit(
@@ -3861,6 +3933,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         notes: `Registro de pago a pedido #${targetOrder.orderNumber}`,
       };
       setExpenses((prev) => [exp, ...prev]);
+
+      // Integración con Bandeja Unificada de Gastos
+      const prov = providers.find((p) => p.id === targetOrder.providerId);
+      expensesService.recordPurchaseExpense({
+        orderId: targetOrder.id,
+        invoiceNumber: receiptNumber || targetOrder.invoiceOrReceiptNumber,
+        providerId: targetOrder.providerId,
+        providerName: prov?.name || 'Proveedor',
+        amount,
+        paymentDate: getLocalDatetimeString(),
+        cashBoxName: account,
+        paidByUserName: `Usuario (${userRole.toUpperCase()})`,
+        notes: `Pago a proveedor pedido #${targetOrder.orderNumber} - Método: ${method} (${account})`,
+      });
     }
 
     logAudit('Registro de Pago', 'pago', orderId, `Pago de $${amount.toLocaleString('es-AR')} mediante ${method} (${account})`);
@@ -4212,6 +4298,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         saveStockCount,
         createOrder,
         updateOrderStatus,
+        deleteOrder,
+        clearAllOrders,
         receiveGoods,
         recordPayment,
         updateReceptionHours,

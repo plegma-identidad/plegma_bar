@@ -318,6 +318,85 @@ export const expensesService = {
   },
 
   /**
+   * Actualiza los datos de un gasto en estado 'Pendiente' (concepto, monto, fecha, notas, proveedor)
+   */
+  async updateExpense(
+    expenseId: string,
+    updates: {
+      concept?: string;
+      date?: string;
+      amount?: number;
+      providerId?: string;
+      providerName?: string;
+      cashBoxId?: string;
+      cashBoxName?: string;
+      notes?: string;
+    }
+  ): Promise<{ success: boolean; message: string; expense?: Expense }> {
+    try {
+      const payload: Record<string, any> = {
+        updated_at: new Date().toISOString(),
+      };
+      if (updates.concept !== undefined) payload.concept = updates.concept.trim();
+      if (updates.date !== undefined) payload.date = updates.date;
+      if (updates.amount !== undefined) payload.amount = Number(updates.amount);
+      if (updates.providerId !== undefined) payload.provider_id = updates.providerId || null;
+      if (updates.providerName !== undefined) payload.provider_name = updates.providerName.trim();
+      if (updates.cashBoxId !== undefined) {
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(updates.cashBoxId);
+        payload.cash_box_id = isUUID ? updates.cashBoxId : null;
+      }
+      if (updates.cashBoxName !== undefined) payload.cash_box_name = updates.cashBoxName || null;
+      if (updates.notes !== undefined) payload.notes = updates.notes;
+
+      const { data, error } = await supabase
+        .from('expenses')
+        .update(payload)
+        .eq('id', expenseId)
+        .eq('status', 'Pendiente')
+        .select('*')
+        .single();
+
+      if (error) {
+        console.error('Error al editar gasto pendiente:', error);
+        return { success: false, message: 'No se pudo actualizar el gasto en base de datos.' };
+      }
+
+      return { success: true, message: 'Gasto actualizado correctamente.', expense: data as Expense };
+    } catch (err: any) {
+      console.error('Excepción al editar gasto:', err);
+      return { success: false, message: err?.message || 'Error inesperado al actualizar gasto.' };
+    }
+  },
+
+  /**
+   * Anula un gasto buscando por su reference_id (usado en desmarcado de sueldos o anulación de pedidos)
+   */
+  async voidExpenseByReferenceId(
+    referenceId: string,
+    reason: string,
+    cancelledByUserName?: string
+  ): Promise<boolean> {
+    try {
+      const { data: exp } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('reference_id', referenceId)
+        .maybeSingle();
+
+      if (!exp || exp.status === 'Anulado') {
+        return false;
+      }
+
+      const res = await this.voidExpense(exp as Expense, reason, cancelledByUserName);
+      return res.success;
+    } catch (err) {
+      console.warn('Error al anular gasto por reference_id:', err);
+      return false;
+    }
+  },
+
+  /**
    * Paga un gasto pendiente con una caja activa y archivo opcional
    */
   async payExpense(
@@ -751,15 +830,22 @@ export const expensesService = {
         return null;
       }
 
+      const isBoxUUID =
+        params.cashBoxId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.cashBoxId);
+      const isMovUUID =
+        params.cashMovementId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.cashMovementId);
+
       const payload: Record<string, any> = {
         date: params.paymentDate.split('T')[0] || new Date().toISOString().split('T')[0],
         concept: `Pago de Haberes - ${params.employeeName}`,
         provider_name: `Empleado: ${params.employeeName}`,
         origin: 'Sueldos',
         amount: params.amount,
-        cash_box_id: params.cashBoxId || null,
+        cash_box_id: isBoxUUID ? params.cashBoxId : null,
         cash_box_name: params.cashBoxName || null,
-        cash_movement_id: params.cashMovementId || null,
+        cash_movement_id: isMovUUID ? params.cashMovementId : null,
         status: 'Pagado',
         payment_date: params.paymentDate,
         paid_by_user_name: params.paidByUserName || 'RRHH',
@@ -816,16 +902,26 @@ export const expensesService = {
         return null;
       }
 
+      const isProvUUID =
+        params.providerId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.providerId);
+      const isBoxUUID =
+        params.cashBoxId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.cashBoxId);
+      const isMovUUID =
+        params.cashMovementId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(params.cashMovementId);
+
       const payload: Record<string, any> = {
         date: params.paymentDate.split('T')[0] || new Date().toISOString().split('T')[0],
         concept: `Compra / Comprobante ${params.invoiceNumber || ''}`.trim(),
-        provider_id: params.providerId,
+        provider_id: isProvUUID ? params.providerId : null,
         provider_name: params.providerName,
         origin: 'Proveedores',
         amount: params.amount,
-        cash_box_id: params.cashBoxId || null,
+        cash_box_id: isBoxUUID ? params.cashBoxId : null,
         cash_box_name: params.cashBoxName || null,
-        cash_movement_id: params.cashMovementId || null,
+        cash_movement_id: isMovUUID ? params.cashMovementId : null,
         status: 'Pagado',
         payment_date: params.paymentDate,
         paid_by_user_name: params.paidByUserName || 'Compras',

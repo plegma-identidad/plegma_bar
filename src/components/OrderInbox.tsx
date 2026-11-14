@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Order, ProcessState, Provider } from '../types';
 import {
@@ -16,6 +16,9 @@ import {
   X,
   Plus,
   ShoppingBag,
+  Trash2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 interface OrderInboxProps {
@@ -31,7 +34,7 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
   onRecordPayment,
   onNewOrder,
 }) => {
-  const { orders, providers, recordPayment, userRole } = useApp();
+  const { orders, providers, recordPayment, deleteOrder, clearAllOrders, showToast, userRole } = useApp();
 
   const [activeTab, setActiveTab] = useState<string>('todos');
   const [searchQuery, setSearchQuery] = useState('');
@@ -88,6 +91,24 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
     return true;
   });
 
+  // Paginación
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  // Resetear página al cambiar filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeTab, searchQuery, selectedProviderId]);
+
+  // Pedidos paginados
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = (safeCurrentPage - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, filteredOrders.length);
+  const paginatedOrders = useMemo(() => {
+    return filteredOrders.slice(startIndex, endIndex);
+  }, [filteredOrders, startIndex, endIndex]);
+
   const handleExecutePayment = () => {
     if (!payingOrder) return;
     const amountNum = Number(payAmountInput);
@@ -117,6 +138,23 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
 
         {/* Filters and Actions */}
         <div className="flex flex-wrap items-center gap-3">
+          {orders.length > 0 && (
+            <button
+              type="button"
+              onClick={async () => {
+                if (window.confirm('¿Deseas vaciar todos los pedidos de prueba de la bandeja y de la base de datos?')) {
+                  await clearAllOrders();
+                  showToast('Bandeja de pedidos vaciada exitosamente.', 'info');
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition shadow-2xs"
+              title="Vaciar todos los registros de prueba"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Vaciar Bandeja</span>
+            </button>
+          )}
+
           {onNewOrder && (
             <button
               type="button"
@@ -282,7 +320,7 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
                   </td>
                 </tr>
               ) : (
-                filteredOrders.map((ord) => {
+                paginatedOrders.map((ord) => {
                   const prov = providers.find((p) => p.id === ord.providerId);
                   const isPaid = ord.paymentStatus === 'Pagado';
 
@@ -373,6 +411,21 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
                               <span>Pagar</span>
                             </button>
                           ) : null}
+
+                          {/* Delete Order Button */}
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              if (window.confirm(`¿Deseas eliminar el pedido #${ord.orderNumber}?`)) {
+                                await deleteOrder(ord.id);
+                                showToast(`Pedido #${ord.orderNumber} eliminado.`, 'info');
+                              }
+                            }}
+                            className="p-1.5 text-rose-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            title="Eliminar Pedido"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -381,6 +434,61 @@ export const OrderInbox: React.FC<OrderInboxProps> = ({
               )}
             </tbody>
           </table>
+
+          {/* Barra de Paginación */}
+          <div className="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+            <div className="flex items-center gap-2">
+              <span>Mostrar</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="bg-white border border-slate-300 rounded-lg px-2.5 py-1 font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span>pedidos por página</span>
+            </div>
+
+            <div className="flex items-center gap-4">
+              <span className="font-medium text-slate-500">
+                {filteredOrders.length === 0
+                  ? '0 pedidos'
+                  : `Mostrando ${startIndex + 1} - ${endIndex} de ${filteredOrders.length}`}
+              </span>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  disabled={safeCurrentPage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  title="Página anterior"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <span className="px-2 font-bold text-slate-700">
+                  {safeCurrentPage} / {totalPages}
+                </span>
+
+                <button
+                  type="button"
+                  disabled={safeCurrentPage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                  title="Página siguiente"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
