@@ -70,6 +70,7 @@ import { combosService } from '../services/combosService';
 import { storageService } from '../services/storageService';
 import { purchaseOrdersService } from '../services/purchaseOrdersService';
 import { expensesService } from '../services/expensesService';
+import { kitchenService } from '../services/kitchenService';
 import {
   INITIAL_PROVIDERS,
   INITIAL_ITEMS,
@@ -2960,6 +2961,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const finalOrder = saved || { ...orderToSave, id: 'ord-' + Date.now() };
 
     setSaleOrders((prev) => [finalOrder, ...prev]);
+
+    // Sincronizar automáticamente con Monitor de Cocina (KDS) si contiene productos de fabricación
+    kitchenService.syncOrderToKitchen(finalOrder, saleProducts, activeUserId, activeUser?.name)
+      .catch((err) => console.warn('Advertencia al sincronizar cocina en creación de pedido:', err));
+
     return { success: true, message: `Pedido #${finalOrder.orderNumber || nextNum} registrado exitosamente.`, order: finalOrder };
   };
 
@@ -2978,8 +2984,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     const saved = await saleOrdersService.save(finalOrderPayload);
     const finalOrder = saved || finalOrderPayload;
+    const activeUser = users.find((u) => u.id === activeUserId);
 
     setSaleOrders((prev) => prev.map((o) => (o.id === updatedOrder.id ? finalOrder : o)));
+
+    // Sincronizar con Monitor de Cocina (KDS): gestiona automáticamente agregados posteriores y cancelaciones
+    kitchenService.syncOrderToKitchen(finalOrder, saleProducts, activeUserId, activeUser?.name)
+      .catch((err) => console.warn('Advertencia al sincronizar cocina en actualización de pedido:', err));
+
     return { success: true, message: `Pedido #${updatedOrder.orderNumber} actualizado correctamente.` };
   };
 
@@ -2993,6 +3005,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     const nowStr = getNowStr();
+    const activeUser = users.find((u) => u.id === activeUserId);
     const pdfUrl = `comanda_${target.orderNumber}.pdf`;
     const newStatus = target.status === 'Pendiente' ? 'Comandado' : target.status;
 
@@ -3010,6 +3023,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           : o
       )
     );
+
+    // Sincronizar emisión en el Monitor de Cocina
+    kitchenService.syncOrderToKitchen(target, saleProducts, activeUserId, activeUser?.name)
+      .catch((err) => console.warn('Advertencia al sincronizar cocina en comanda:', err));
 
     return { success: true, message: `Comanda emitida y enviada a cocina/barra para Pedido #${target.orderNumber}.`, pdfUrl };
   };

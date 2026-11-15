@@ -27,6 +27,7 @@ import {
   Calendar,
   ChefHat,
   DollarSign,
+  Flame,
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -72,6 +73,7 @@ const NAV_SECTIONS: NavSection[] = [
       { id: 'ventas_carta', label: 'Prod. de Venta (Carta)', description: 'Recetas, productos de fabricación & reventa', icon: ChefHat },
       { id: 'ventas_combos', label: 'Combos', description: 'Combos configurables, secciones, opciones & recargos', icon: Layers },
       { id: 'ventas_pedidos', label: 'Ventas — Comandas v2.0', description: 'Toma POS táctil, comandas a cocina & cobro dividido', icon: Utensils },
+      { id: 'cocina_kds', label: 'Monitor de Cocina (KDS)', description: 'Pantalla KDS táctil, semáforos, tiempos de preparación & consolidado', icon: Flame },
       { id: 'ventas_caja', label: 'Ventas — Control de Caja', description: 'Apertura, cierres de turno, retiros & conciliación', icon: CreditCard },
       { id: 'ventas_cc', label: 'Ventas — Cuenta Corriente', description: 'Cuentas corrientes de clientes, consumos & recibos', icon: Receipt },
       { id: 'ventas_reservas', label: 'Ventas — Reservas de Mesas', description: 'Gestión de comensales, mesas & reservas', icon: Calendar },
@@ -429,7 +431,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header
       style={menuContainerStyle}
-      className="hidden md:block border-b border-slate-800 sticky top-0 z-40 shadow-md transition-colors"
+      className="hidden md:block border-b border-slate-800 sticky top-0 z-50 shadow-md transition-colors"
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 gap-4">
@@ -504,7 +506,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   {section.items.length > 1 && isDropdownOpen && (
                     <div
                       onMouseLeave={() => setActiveDropdown(null)}
-                      className="absolute left-0 mt-1 w-64 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-2 z-50 animate-fadeIn space-y-1"
+                      className="absolute left-0 mt-1 w-64 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-2 z-60 animate-fadeIn space-y-1"
                     >
                       {section.items.map((item) => {
                         const ItemIcon = item.icon;
@@ -512,12 +514,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                         return (
                           <button
                             key={item.id}
+                            type="button"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setCurrentTab(item.id);
+                              setActiveDropdown(null);
+                            }}
                             onClick={() => {
                               setCurrentTab(item.id);
                               setActiveDropdown(null);
                             }}
                             style={getNavItemStyle(isSubActive)}
-                            className={`w-full flex items-start gap-3 p-2.5 rounded-xl text-left transition ${
+                            className={`w-full flex items-start gap-3 p-2.5 rounded-xl text-left transition cursor-pointer ${
                               isSubActive
                                 ? 'shadow-xs border border-white/10'
                                 : 'hover:opacity-80'

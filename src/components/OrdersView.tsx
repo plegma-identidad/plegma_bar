@@ -42,6 +42,7 @@ const OrderStatusBadge: React.FC<{ status: OrderStatus }> = ({ status }) => {
   const cfg: Record<OrderStatus, string> = {
     Pendiente: 'bg-slate-100 text-slate-800 border-slate-300',
     Comandado: 'bg-indigo-100 text-indigo-800 border-indigo-300',
+    'En preparación': 'bg-blue-100 text-blue-800 border-blue-300',
     'En Cocina': 'bg-amber-100 text-amber-800 border-amber-300',
     Listo: 'bg-emerald-100 text-emerald-800 border-emerald-300',
     Entregado: 'bg-blue-100 text-blue-800 border-blue-300',

@@ -105,6 +105,7 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
 }) => {
   const {
     items,
+    saleProducts,
     productionProducts,
     addOrUpdateSaleProduct,
     addOrUpdateItem,
@@ -215,7 +216,14 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
     } else {
       // Nuevo producto
       setProductType('FABRICACION');
-      setCode(`PRD-${Math.floor(100 + Math.random() * 900)}`);
+      const existingCodes = new Set((saleProducts || []).map((p) => (p.code || '').trim().toUpperCase()));
+      let seq = 1;
+      let candidate = `PRD-${String(seq).padStart(3, '0')}`;
+      while (existingCodes.has(candidate)) {
+        seq++;
+        candidate = `PRD-${String(seq).padStart(3, '0')}`;
+      }
+      setCode(candidate);
       setName('');
       const defaultCat = saleCategories.find((c) => c.active)?.name || 'Hamburguesas';
       const defaultSub = saleSubcategories.find((s) => s.active)?.name || 'General';
@@ -804,7 +812,16 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setProductType('FABRICACION')}
+                onClick={() => {
+                  setProductType('FABRICACION');
+                  if (!productToEdit && code.startsWith('REV-')) {
+                    const existingCodes = new Set((saleProducts || []).map((p) => (p.code || '').trim().toUpperCase()));
+                    let seq = 1;
+                    let candidate = `PRD-${String(seq).padStart(3, '0')}`;
+                    while (existingCodes.has(candidate)) { seq++; candidate = `PRD-${String(seq).padStart(3, '0')}`; }
+                    setCode(candidate);
+                  }
+                }}
                 className={`p-4 rounded-2xl border-2 text-left transition flex items-start gap-3.5 ${productType === 'FABRICACION'
                     ? 'bg-indigo-50/70 border-indigo-600 shadow-sm'
                     : 'bg-slate-50 border-slate-200 hover:bg-slate-100 opacity-80'
@@ -835,7 +852,16 @@ export const SaleProductModal: React.FC<SaleProductModalProps> = ({
 
               <button
                 type="button"
-                onClick={() => setProductType('REVENTA')}
+                onClick={() => {
+                  setProductType('REVENTA');
+                  if (!productToEdit && (code.startsWith('PRD-') || !code.trim())) {
+                    const existingCodes = new Set((saleProducts || []).map((p) => (p.code || '').trim().toUpperCase()));
+                    let seq = 1;
+                    let candidate = `REV-${String(seq).padStart(3, '0')}`;
+                    while (existingCodes.has(candidate)) { seq++; candidate = `REV-${String(seq).padStart(3, '0')}`; }
+                    setCode(candidate);
+                  }
+                }}
                 className={`p-4 rounded-2xl border-2 text-left transition flex items-start gap-3.5 ${productType === 'REVENTA'
                     ? 'bg-emerald-50/70 border-emerald-600 shadow-sm'
                     : 'bg-slate-50 border-slate-200 hover:bg-slate-100 opacity-80'

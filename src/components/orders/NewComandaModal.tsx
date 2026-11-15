@@ -8,7 +8,9 @@ interface NewComandaModalProps {
   saleTypes?: SaleTypeConfig[];
   tables?: RestaurantTableConfig[];
   clients?: Client[];
+  existingOrders?: SaleOrder[];
   onClose: () => void;
+  onSelectExistingOrder?: (order: SaleOrder) => void;
   onConfirmCreate: (payload: {
     saleTypeId: string;
     saleTypeName: string;
@@ -24,7 +26,9 @@ export const NewComandaModal: React.FC<NewComandaModalProps> = ({
   saleTypes = [],
   tables = [],
   clients = [],
+  existingOrders = [],
   onClose,
+  onSelectExistingOrder,
   onConfirmCreate,
 }) => {
   const safeClients = clients || [];
@@ -46,6 +50,47 @@ export const NewComandaModal: React.FC<NewComandaModalProps> = ({
   const selectedTable = activeTables.find((t) => t.id === tableId);
   const selectedClient = safeClients.find((c) => c.id === clientId) || safeClients[0];
 
+  // Función robusta para comprobar si una orden pertenece a la mesa seleccionada
+  const isOrderMatchingSelectedTable = (o: SaleOrder) => {
+    if (!o || o.status === 'Facturado' || o.status === 'Cancelado') return false;
+
+    // 1. Coincidencia directa por ID de mesa
+    if (o.tableId && (o.tableId === tableId || (selectedTable && o.tableId === selectedTable.id))) {
+      return true;
+    }
+
+    if (!selectedTable) return false;
+
+    // 2. Coincidencia por nombre completo de mesa (case insensitive)
+    if (o.tableName && selectedTable.name) {
+      if (o.tableName.toLowerCase().trim() === selectedTable.name.toLowerCase().trim()) {
+        return true;
+      }
+    }
+
+    // 3. Extracción de dígitos de número de mesa (ej: "Mesa 01", "1", "01", "TBL-01")
+    const extractDigits = (val?: string) => {
+      if (!val) return null;
+      const m = val.match(/\d+/);
+      return m ? parseInt(m[0], 10) : null;
+    };
+
+    const orderDigits = extractDigits(o.tableName) ?? extractDigits(o.tableId);
+    const tableDigits = extractDigits(selectedTable.number) ?? extractDigits(selectedTable.name) ?? extractDigits(selectedTable.id);
+
+    if (orderDigits !== null && tableDigits !== null && orderDigits === tableDigits) {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Detectar si la mesa seleccionada ya tiene una comanda activa en curso
+  const existingTableOrder =
+    selectedSaleType?.requiresTable && selectedTable
+      ? (existingOrders || []).find((o) => isOrderMatchingSelectedTable(o))
+      : undefined;
+
   const isDelivery = Boolean(
     selectedSaleType?.name?.toLowerCase().includes('delivery') ||
     selectedSaleType?.id === 'st-002'
@@ -57,6 +102,13 @@ export const NewComandaModal: React.FC<NewComandaModalProps> = ({
       setDeliveryAddress(selectedClient.address || '');
     }
   }, [clientId, isDelivery, selectedSaleTypeId]);
+
+  // Auto-seleccionar primera mesa si no hay ninguna seleccionada
+  React.useEffect(() => {
+    if (activeTables.length > 0 && (!tableId || !activeTables.some((t) => t.id === tableId))) {
+      setTableId(activeTables[0].id);
+    }
+  }, [activeTables, tableId]);
 
   const handleNextStep = () => {
     if (!selectedSaleType) return;
@@ -89,13 +141,19 @@ export const NewComandaModal: React.FC<NewComandaModalProps> = ({
       return;
     }
 
+    const formattedTableName = selectedSaleType.requiresTable && selectedTable
+      ? (selectedTable.name || `${selectedTable.number.toLowerCase().startsWith('mesa') ? selectedTable.number : `Mesa ${selectedTable.number}`} (${selectedTable.siteName || 'Salón'})`)
+      : selectedSaleType.requiresTable
+      ? 'Mesa 01'
+      : undefined;
+
     onConfirmCreate({
       saleTypeId: selectedSaleType.id,
       saleTypeName: selectedSaleType.name,
       clientId: selectedClient ? selectedClient.id : 'cli-001',
       clientName: selectedClient ? selectedClient.name : 'Consumidor Final',
       tableId: selectedSaleType.requiresTable ? selectedTable?.id : undefined,
-      tableName: selectedSaleType.requiresTable ? (selectedTable ? `${selectedTable.number} (${selectedTable.siteName})` : 'Mesa 01') : undefined,
+      tableName: formattedTableName,
       deliveryAddress: isDelivery ? deliveryAddress.trim() : undefined,
     });
   };
@@ -183,12 +241,47 @@ export const NewComandaModal: React.FC<NewComandaModalProps> = ({
                   <SelectInput
                     value={tableId}
                     onChange={(e) => setTableId(e.target.value)}
-                    options={activeTables.map((t) => ({
-                      value: t.id,
-                      label: `${t.number} — ${t.siteName} (Cap: ${t.capacity} pax)`,
-                    }))}
+                    options={activeTables.map((t) => {
+                      const displayLabel = t.name
+                        ? `${t.name} (Capacidad: ${t.capacity} pax)`
+                        : `${t.number.toLowerCase().startsWith('mesa') ? t.number : `Mesa ${t.number}`} — ${t.siteName || 'Salón'} (Cap: ${t.capacity} pax)`;
+                      return {
+                        value: t.id,
+                        label: displayLabel,
+                      };
+                    })}
                   />
                 </FormField>
+              )}
+
+              {/* Detección de Comanda Activa para la Mesa */}
+              {existingTableOrder && (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-500/40 text-slate-800 space-y-3">
+                  <div className="flex items-start space-x-2.5">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-black text-amber-950">
+                        ¡{selectedTable?.name || `Mesa ${selectedTable?.number || ''}`} ya tiene la Comanda #{String(existingTableOrder.orderNumber).padStart(4, '0')} activa!
+                      </p>
+                      <p className="text-[11px] text-slate-600 font-medium mt-0.5">
+                        Estado: <span className="font-bold text-amber-800 uppercase">{existingTableOrder.kitchenStatus || existingTableOrder.status}</span> ({existingTableOrder.items.length} {existingTableOrder.items.length === 1 ? 'ítem cargado' : 'ítems cargados'}).
+                        Si deseas agregar productos a esta misma mesa, presiona el botón para sumarlos a la orden en curso.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2 pt-1">
+                    {onSelectExistingOrder && (
+                      <button
+                        type="button"
+                        onClick={() => onSelectExistingOrder(existingTableOrder)}
+                        className="flex-1 py-2 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-xl text-xs flex items-center justify-center space-x-1 shadow-xs transition-all cursor-pointer"
+                      >
+                        <span>✏️ Agregar productos a Comanda #{String(existingTableOrder.orderNumber).padStart(4, '0')}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
 
               <FormField label="Asociar Cliente" required={selectedSaleType?.requiresClient}>

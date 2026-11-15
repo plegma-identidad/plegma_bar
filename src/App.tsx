@@ -31,6 +31,7 @@ import { SaleProductsView } from './components/sales/SaleProductsView';
 import { CombosView } from './components/combos/CombosView';
 import { ProductionsView } from './components/productions/ProductionsView';
 import { ExpensesView } from './components/expenses/ExpensesView';
+import { KitchenDisplayView } from './components/kitchen/KitchenDisplayView';
 import { useIsMobile } from './hooks/useIsMobile';
 import { Provider, Order, StockCount } from './types';
 
@@ -214,7 +215,13 @@ function MainLayout() {
 
         {currentTab === 'sales_config' && <SalesConfigView />}
 
-        {currentTab === 'ventas_pedidos' && <ComandasPosView />}
+        {currentTab === 'ventas_pedidos' && (
+          <ComandasPosView onNavigateToKds={() => setCurrentTab('cocina_kds')} />
+        )}
+
+        {currentTab === 'cocina_kds' && (
+          <KitchenDisplayView onNavigateToPos={() => setCurrentTab('ventas_pedidos')} />
+        )}
 
         {currentTab === 'dashboard' && <PurchasingDashboard />}
 

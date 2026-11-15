@@ -68,6 +68,8 @@ export const saleOrdersService = {
         t3KitchenOutputAt: row.t3_kitchen_output_at || undefined,
         t4DeliveredAt: row.t4_delivered_at || undefined,
         billingDetails: row.billing_details || undefined,
+        kitchenStatus: row.kitchen_status || undefined,
+        kitchenUserName: row.kitchen_user_name || undefined,
         items: itemsByOrderId.get(row.id) || [],
       }));
     } catch (err) {
@@ -117,6 +119,8 @@ export const saleOrdersService = {
         t3_kitchen_output_at: order.t3KitchenOutputAt || null,
         t4_delivered_at: order.t4DeliveredAt || null,
         billing_details: order.billingDetails || null,
+        kitchen_status: order.kitchenStatus || null,
+        kitchen_user_name: order.kitchenUserName || null,
       };
 
       let savedOrderId = order.id;

@@ -171,7 +171,10 @@ export const saleProductsService = {
 
       if (saveErr) {
         console.error('Error al guardar producto de venta en Supabase:', saveErr);
-        return null;
+        if (saveErr.code === '23505') {
+          throw new Error(`El código "${product.code}" ya está en uso. Por favor ingresa un código diferente.`);
+        }
+        throw new Error(saveErr.message || 'Error al guardar producto en Supabase.');
       }
 
       const savedId = savedProd.id;

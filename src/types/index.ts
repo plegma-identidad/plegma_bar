@@ -900,6 +900,7 @@ export interface SaleProduct {
 export type OrderStatus =
   | 'Pendiente'
   | 'Comandado'
+  | 'En preparación'
   | 'En Cocina'
   | 'Listo'
   | 'Entregado'
@@ -996,8 +997,79 @@ export interface SaleOrder {
   comandaPdfUrl?: string;        // Documento Comanda PDF
   ticketPdfUrl?: string;         // Documento Ticket PDF
 
+  // Trazabilidad específica KDS / Cocina
+  kitchenStatus?: KitchenBatchStatus;
+  tKitchenStart?: string;
+  tKitchenEnd?: string;
+  kitchenUserId?: string;
+  kitchenUserName?: string;
+
   items: SaleOrderItem[];
   billingDetails?: OrderBillingInfo;
+}
+
+// ----------------------------------------------------
+// MONITOR DE COCINA — KDS (Kitchen Display System)
+// ----------------------------------------------------
+
+export type KitchenBatchStatus = 'Pendiente' | 'En preparación' | 'Listo' | 'Entregado' | 'Cancelado';
+
+export type KitchenItemStatus = 'Activo' | 'Cancelado' | 'Modificado';
+
+export interface KitchenBatchItem {
+  id: string;
+  batchId?: string;
+  saleOrderItemId?: string;
+  productId: string;
+  productName: string;
+  category?: string;
+  quantity: number;
+  selectedOptions?: SelectedOptionDetail[];
+  lineComment?: string;
+  itemStatus: KitchenItemStatus;
+  alertMessage?: string;
+  createdAt: string;
+}
+
+export interface KitchenBatch {
+  id: string;
+  orderId: string;
+  orderNumber: number;
+  batchNumber: number;             // 1: Inicial, 2: Agregado 1, 3: Agregado 2...
+  status: KitchenBatchStatus;
+  saleTypeName: string;            // 'Salón' | 'Take Away' | 'Delivery'
+  tableName?: string;              // 'Mesa 04', etc.
+  clientName?: string;
+  generalNotes?: string;
+  deliveryAddress?: string;
+
+  // Tiempos operativos
+  createdAt: string;               // T_ingreso a cocina
+  startedAt?: string;              // T_inicio preparación
+  startedByUserId?: string;
+  startedByUserName?: string;
+  finishedAt?: string;             // T_fin cocina (Listo)
+  finishedByUserId?: string;
+  finishedByUserName?: string;
+  deliveredAt?: string;            // T_entrega al cliente
+
+  // Métricas calculadas en minutos
+  waitMinutes?: number;
+  prepMinutes?: number;
+  deliveryMinutes?: number;
+  totalMinutes?: number;
+
+  items: KitchenBatchItem[];
+}
+
+export interface ConsolidatedProductionItem {
+  key: string;                     // Clave única basada en productName + variantes + lineComment
+  productName: string;
+  totalQuantity: number;
+  selectedOptions?: SelectedOptionDetail[];
+  lineComment?: string;
+  orderNumbers: number[];
+  batchIds: string[];
 }
 
 // ----------------------------------------------------

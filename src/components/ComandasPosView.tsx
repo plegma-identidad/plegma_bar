@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Utensils,
   Plus,
@@ -15,6 +15,7 @@ import {
   Trash2,
   Printer,
   ChevronLeft,
+  ChevronRight,
   Filter,
   User,
   Tag,
@@ -25,11 +26,12 @@ import {
   Receipt,
   MapPin,
   Pizza,
+  Flame,
 } from 'lucide-react';
 import { Button } from './ui/Button';
 import { TextInput } from './ui/Form';
 import { useApp } from '../context/AppContext';
-import { SaleOrder, SaleOrderItem, OrderStatus, Combo } from '../types';
+import { SaleOrder, SaleOrderItem, OrderStatus, Combo, RestaurantTableConfig } from '../types';
 import { SALE_PRODUCT_CATALOG, SaleProductCatalogItem } from '../data/ordersData';
 import { ComandasConfigModal } from './salesConfig/ComandasConfigModal';
 import { ProductConfiguratorModal } from './orders/ProductConfiguratorModal';
@@ -57,6 +59,9 @@ const SemaforoBadge: React.FC<{ elapsedMin: number; status: OrderStatus }> = ({ 
   if (status === 'Cerrado' || status === 'Facturado') {
     return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-600 border border-slate-200 shrink-0">Cerrada</span>;
   }
+  if (status === 'En preparación' || status === 'En Cocina') {
+    return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-600 text-white shadow-xs shrink-0 flex items-center gap-1">⏱️ En Preparación</span>;
+  }
   if (status === 'Listo') {
     return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-100 text-blue-800 border border-blue-300 shrink-0">🔵 Lista</span>;
   }
@@ -73,11 +78,16 @@ const SemaforoBadge: React.FC<{ elapsedMin: number; status: OrderStatus }> = ({ 
   return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white shadow-xs animate-pulse shrink-0">🔴 {displayMin} min</span>;
 };
 
-export function ComandasPosView() {
+interface ComandasPosViewProps {
+  onNavigateToKds?: () => void;
+}
+
+export function ComandasPosView({ onNavigateToKds }: ComandasPosViewProps = {}) {
   const {
     saleOrders,
     saleTypeConfigs,
     tableConfigs,
+    restaurantTables,
     clients,
     cashShifts,
     combos,
@@ -126,6 +136,15 @@ export function ComandasPosView() {
   // Paginación en Carta / Combos
   const [catalogPage, setCatalogPage] = useState<number>(1);
   const CATALOG_PAGE_SIZE = 12;
+
+  // Referencia y scroll para botones de categorías
+  const categoriesContainerRef = useRef<HTMLDivElement>(null);
+  const scrollCategories = (direction: 'left' | 'right') => {
+    if (categoriesContainerRef.current) {
+      const scrollAmount = direction === 'left' ? -220 : 220;
+      categoriesContainerRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
 
   // Save comment on specific line item
   const handleSaveItemComment = (itemId: string, comment?: string) => {
@@ -186,6 +205,35 @@ export function ComandasPosView() {
 
     return [...activeCombosAsCatalog, ...baseCatalog];
   }, [combos, saleProducts]);
+
+  // Unificación de mesas: combina las mesas del maestro de salón / reservas con las mesas operativas
+  const availableTables = useMemo<RestaurantTableConfig[]>(() => {
+    const fromReservations: RestaurantTableConfig[] = (restaurantTables || []).map((t) => ({
+      id: t.id,
+      number: t.code || t.name.replace(/[^0-9]/g, '') || t.name,
+      name: t.name,
+      capacity: t.capacity,
+      siteId: t.sector,
+      siteName: t.sector,
+      isFree: true,
+      active: t.active,
+    }));
+
+    const result = [...(tableConfigs || [])];
+    fromReservations.forEach((rt) => {
+      const exists = result.some(
+        (e) =>
+          e.id === rt.id ||
+          (e.number && rt.number && e.number.toLowerCase().trim() === rt.number.toLowerCase().trim()) ||
+          (e.name && rt.name && e.name.toLowerCase().trim() === rt.name.toLowerCase().trim())
+      );
+      if (!exists) {
+        result.push(rt);
+      }
+    });
+
+    return result;
+  }, [tableConfigs, restaurantTables]);
 
   // Categories dinámicas para Columna Central basadas en el catálogo real
   const categories = useMemo(() => {
@@ -482,6 +530,18 @@ export function ComandasPosView() {
             </div>
           )}
 
+          {onNavigateToKds && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onNavigateToKds}
+              leftIcon={<Flame className="w-4 h-4 text-amber-500" />}
+              className="border-slate-700 bg-slate-800/80 text-amber-300 hover:bg-slate-800 hidden sm:inline-flex"
+            >
+              🍳 Monitor Cocina KDS
+            </Button>
+          )}
+
           <Button
             variant="secondary"
             size="sm"
@@ -602,17 +662,31 @@ export function ComandasPosView() {
                       <span>Cocina</span>
                     </button>
 
-                    <button
-                      onClick={() => {
-                        updateSaleOrderStatus(order.id, 'Listo');
-                        showToast(`Comanda #${order.orderNumber} marcada como Lista 🔵`, 'success');
-                      }}
-                      className="py-2 px-1 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl text-xs font-extrabold flex items-center justify-center space-x-1 transition-all"
-                      title="Marcar comanda como lista"
-                    >
-                      <Check className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Lista</span>
-                    </button>
+                    {order.status === 'Listo' ? (
+                      <button
+                        onClick={() => {
+                          updateSaleOrderStatus(order.id, 'Entregado');
+                          showToast(`Comanda #${order.orderNumber} entregada al cliente 🟠`, 'success');
+                        }}
+                        className="py-2 px-1 bg-orange-50 hover:bg-orange-100 text-orange-800 rounded-xl text-xs font-black flex items-center justify-center space-x-1 transition-all"
+                        title="Marcar como entregada al comensal"
+                      >
+                        <Check className="w-3.5 h-3.5 text-orange-600" />
+                        <span>Entregar</span>
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          updateSaleOrderStatus(order.id, 'Listo');
+                          showToast(`Comanda #${order.orderNumber} marcada como Lista 🔵`, 'success');
+                        }}
+                        className="py-2 px-1 bg-blue-50 hover:bg-blue-100 text-blue-800 rounded-xl text-xs font-extrabold flex items-center justify-center space-x-1 transition-all"
+                        title="Marcar comanda como lista"
+                      >
+                        <Check className="w-3.5 h-3.5 text-blue-600" />
+                        <span>Lista</span>
+                      </button>
+                    )}
 
                     <button
                       onClick={() => setBillingOrder(order)}
@@ -650,13 +724,23 @@ export function ComandasPosView() {
                 >
                   ← Volver a Bandeja
                 </Button>
-                <h3 className="font-black text-slate-900 text-sm">
-                  Comanda #{activeOrder ? String(activeOrder.orderNumber).padStart(4, '0') : ''}
+                <h3 className="font-black text-slate-900 text-sm flex items-center gap-1.5">
+                  <span>Comanda #{activeOrder ? String(activeOrder.orderNumber).padStart(4, '0') : ''}</span>
+                  {activeOrder?.tableName && (
+                    <span className="text-xs font-bold text-slate-600">({activeOrder.tableName})</span>
+                  )}
                 </h3>
               </div>
-              <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-amber-100 text-amber-900 border border-amber-200">
-                {activeOrder?.saleTypeName}
-              </span>
+              <div className="flex flex-col items-end gap-1">
+                <span className="px-2.5 py-1 rounded-xl text-xs font-black bg-amber-100 text-amber-900 border border-amber-200">
+                  {activeOrder?.saleTypeName}
+                </span>
+                {activeOrder?.kitchenStatus === 'En preparación' && (
+                  <span className="px-2 py-0.5 rounded-lg text-[10px] font-black bg-blue-100 text-blue-800 border border-blue-200">
+                    ⏱️ En Preparación
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Campo Comentario General de Comanda (Ubicado ARRIBA de donde va poniendo el detalle de artículos) */}
@@ -849,23 +933,55 @@ export function ComandasPosView() {
           <div className="flex-1 bg-slate-100 flex flex-col h-full overflow-hidden">
             {/* Filter Pills Header */}
             <div className="p-4 bg-white border-b border-slate-200 space-y-3">
-              <div className="flex items-center space-x-2 overflow-x-auto pb-1 no-scrollbar">
-                {categories.map((cat) => {
-                  const active = categoryFilter === cat;
-                  return (
-                    <button
-                      key={cat}
-                      onClick={() => setCategoryFilter(cat)}
-                      className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all ${
-                        active
-                          ? 'bg-amber-500 text-slate-950 shadow-sm'
-                          : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      }`}
-                    >
-                      {cat}
-                    </button>
-                  );
-                })}
+              <div className="relative flex items-center gap-1">
+                {/* Botón flecha izquierda */}
+                <button
+                  type="button"
+                  onClick={() => scrollCategories('left')}
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition shadow-xs shrink-0 cursor-pointer"
+                  title="Categorías anteriores"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                {/* Contenedor de categorías con scroll horizontal y soporte de rueda de mouse */}
+                <div
+                  ref={categoriesContainerRef}
+                  onWheel={(e) => {
+                    if (categoriesContainerRef.current && e.deltaY !== 0) {
+                      categoriesContainerRef.current.scrollLeft += e.deltaY;
+                    }
+                  }}
+                  className="flex items-center space-x-2 overflow-x-auto pb-1.5 scroll-smooth flex-1 scrollbar-thin"
+                  style={{ scrollbarWidth: 'thin' }}
+                >
+                  {categories.map((cat) => {
+                    const active = categoryFilter === cat;
+                    return (
+                      <button
+                        key={cat}
+                        onClick={() => setCategoryFilter(cat)}
+                        className={`px-4 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+                          active
+                            ? 'bg-amber-500 text-slate-950 shadow-sm'
+                            : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Botón flecha derecha */}
+                <button
+                  type="button"
+                  onClick={() => scrollCategories('right')}
+                  className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition shadow-xs shrink-0 cursor-pointer"
+                  title="Más categorías"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
               </div>
 
               {/* Search Bar */}
@@ -991,9 +1107,15 @@ export function ComandasPosView() {
       {isNewComandaModalOpen && (
         <NewComandaModal
           saleTypes={saleTypeConfigs}
-          tables={tableConfigs}
+          tables={availableTables}
           clients={clients}
+          existingOrders={saleOrders}
           onClose={() => setIsNewComandaModalOpen(false)}
+          onSelectExistingOrder={(order) => {
+            setIsNewComandaModalOpen(false);
+            setActiveOrder(order);
+            setViewMode('edicion');
+          }}
           onConfirmCreate={handleConfirmNewComanda}
         />
       )}
