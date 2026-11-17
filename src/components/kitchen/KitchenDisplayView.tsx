@@ -453,7 +453,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({ onNaviga
       </div>
 
       {/* 4. ÁREA PRINCIPAL DE TARJETAS KDS EN ESTRICTO ORDEN CRONOLÓGICO */}
-      <main className="p-4 sm:p-6 flex-1 overflow-y-auto">
+      <main className="p-4 sm:p-6 flex-1 overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-slate-950 [&::-webkit-scrollbar-thumb]:bg-slate-800 [&::-webkit-scrollbar-thumb]:rounded-full">
         {isLoading && batches.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-slate-500">
             <RefreshCw className="w-10 h-10 animate-spin text-amber-500 mb-3" />
@@ -468,7 +468,7 @@ export const KitchenDisplayView: React.FC<KitchenDisplayViewProps> = ({ onNaviga
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(350px,1fr))] gap-6 items-start pb-12">
             {filteredBatches.map((batch) => (
               <KitchenCard
                 key={batch.id}
